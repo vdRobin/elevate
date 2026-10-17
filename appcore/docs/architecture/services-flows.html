@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Services, IPC and Flows</title>
+<meta name="description" content="Appcore services, sync and recalculation flows, Electron IPC tunnel, remote calls and error handling.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="layout">
+<nav class="side" aria-label="Documentation">
+  <div class="brand">Elevate <span>appcore</span></div>
+  <div class="sub">Architecture documentation · v7.2.2</div>
+  <ol><li><a href="index.html">Overview</a></li><li><a href="build-targets.html">Build targets & boot</a></li><li><a href="data-layer.html">Data & persistence</a></li><li><a href="services-flows.html" aria-current="page">Services, IPC & flows</a></li><li><a href="features.html">Feature modules</a></li><li><a href="assessment.html">Strengths & weaknesses</a></li><li><a href="ai-guide.html">AI working guide</a></li></ol>
+  <div class="toc"><a href="#catalog">Service catalog</a><a href="#sync-desktop">Flow: desktop synchronisation</a><a href="#sync-ext">Flow: extension synchronisation</a><a href="#recalc">Flow: recalculation (desktop)</a><a href="#compliance">Flow: history compliance checks</a><a href="#manual">Flow: manual activity entry (desktop)</a><a href="#ipc">The Electron IPC tunnel</a><a href="#remote">Remote services</a><a href="#updates">Flow: application updates</a><a href="#errors">Error handling and logging</a></div>
+</nav>
+<main>
+<h1>Services, IPC and flows</h1>
+<p class="lead">This page catalogs the application services, then traces the important runtime flows end to end: synchronisation on both targets, recalculation, history compliance checks, the Electron IPC tunnel, calls to remote services, and error handling.</p>
+
+<h2 id="catalog">Service catalog</h2>
+<h3>Shared services (both targets)</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Service</th><th>File</th><th>Responsibility</th></tr></thead>
+<tbody>
+<tr><td><code>ActivityService</code> (abstract)</td><td><code>shared/services/activity/activity.service.ts</code></td><td>Activity CRUD over <code>ActivityDao</code>, sorted fetch, counts by type, dated-session lookup, athlete-settings consistency checks, settings-lack checks, <code>createManualEntry()</code>. Exposes <code>athleteSettingsConsistency$</code> and <code>activitiesWithSettingsLacks$</code>.</td></tr>
+<tr><td><code>AthleteService</code> (abstract)</td><td><code>shared/services/athlete/athlete.service.ts</code></td><td>Singleton athlete model. Add, edit, remove and reset dated settings with validation (one forever entry, no duplicate dates, YYYY-MM-DD format). Errors are <code>AppError</code> codes.</td></tr>
+<tr><td><code>AthleteSnapshotResolverService</code></td><td><code>shared/services/athlete-snapshot-resolver/</code></td><td>Stateful wrapper: <code>update()</code> loads the athlete and builds a resolver; <code>resolve(date)</code> throws if <code>update()</code> was never called.</td></tr>
+<tr><td><code>UserSettingsService</code> (abstract)</td><td><code>shared/services/user-settings/</code></td><td>Fetch, update one option, update zones, reset settings (keeps zones), reset zones.</td></tr>
+<tr><td><code>StreamsService</code></td><td><code>shared/services/streams/streams.service.ts</code></td><td>Get deflated, inflated or processed streams by activity id. Put, remove, clear.</td></tr>
+<tr><td><code>SyncService&lt;T&gt;</code> (abstract)</td><td><code>shared/services/sync/sync.service.ts</code></td><td>Contract: <code>sync</code>, <code>stop</code>, <code>getSyncState</code>, <code>backup</code>, <code>restore</code>, <code>clearSyncTime</code>, <code>redirect</code>. Shared <code>clearActivities()</code>. Emits <code>isSyncing$</code>.</td></tr>
+<tr><td><code>AppService</code> (abstract, boot)</td><td><code>shared/services/app-service/app.service.ts</code></td><td>App lifecycle flag <code>isAppLoaded</code>, theme state, forwards <code>isSyncing$</code>, triggers history compliance checks after each sync.</td></tr>
+<tr><td><code>VersionsProvider</code> (abstract)</td><td><code>shared/services/versions/versions-provider.ts</code></td><td>Package version, GitHub release lookups, "new version installed" dialog.</td></tr>
+<tr><td><code>GlobalSettingsService</code></td><td><code>global-settings/services/global-settings.service.ts</code></td><td>Declarative list of settings sections and options per target (436 lines of definitions).</td></tr>
+<tr><td><code>OptionHelperReaderService</code></td><td><code>global-settings/services/</code></td><td>Loads markdown help from <code>assets/option-helpers/*.md</code>.</td></tr>
+<tr><td><code>ReleaseNoteService</code></td><td><code>releases-notes/release-note.service.ts</code></td><td>Renders GitHub release markdown per build target.</td></tr>
+<tr><td><code>SideNavService</code>, <code>WindowService</code></td><td><code>shared/services/side-nav</code>, <code>window</code></td><td>Broadcast side nav and window resize changes so charts can redraw.</td></tr>
+<tr><td><code>OpenResourceResolver</code> (token)</td><td><code>shared/services/links-opener/</code></td><td>Open links and Strava activity pages: external browser on desktop, new tab on the extension.</td></tr>
+<tr><td><code>LoggerService</code> → <code>ConsoleLoggerService</code></td><td><code>shared/services/logging/</code></td><td>Level-filtered getters bound to <code>console.*</code>, reading <code>environment.logLevel</code> at call time.</td></tr>
+<tr><td><code>FitnessService</code>, <code>ViewedDayService</code></td><td><code>fitness-trend/shared/services/</code></td><td>Banister fitness model: daily stress, CTL, ATL, TSB, preview days.</td></tr>
+<tr><td><code>YearProgressService</code></td><td><code>year-progress/shared/services/</code></td><td>Year-to-date and rolling progressions per sport and metric, presets.</td></tr>
+<tr><td><code>ZonesService</code></td><td><code>zones-settings/shared/zones.service.ts</code></td><td>Zone editing rules (add, remove, compliance, import and export).</td></tr>
+</tbody></table></div>
+
+<h3>Desktop-only services</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Service</th><th>Responsibility</th></tr></thead>
+<tbody>
+<tr><td><code>ElectronService</code></td><td>Typed wrapper over <code>window.api</code> (the preload <code>BridgeApi</code>): dialogs, window controls, paths, file checks, open external. Also intercepts clicks on <code>&lt;a href="http..."&gt;</code> and opens them in the system browser.</td></tr>
+<tr><td><code>IpcRendererTunnelService</code></td><td>Renderer side of <code>IpcTunnel</code>: <code>send</code> (request and response), <code>fwd</code> (fire and forget), <code>on</code> (serve requests from main).</td></tr>
+<tr><td><code>IpcStorageService</code></td><td>Get, set and remove keys in main-process JSON storage.</td></tr>
+<tr><td><code>IpcSyncMessagesListener</code></td><td>Serves main's requests: <code>syncEvent</code> (forwarded to <code>syncEvents$</code>), <code>findActivity</code>, <code>findStreams</code>.</td></tr>
+<tr><td><code>IpcSyncMessageSender</code></td><td>Sends <code>startSync</code> and <code>stopSync</code>.</td></tr>
+<tr><td><code>DesktopSyncService</code></td><td>Orchestrates connector syncs, upserts incoming activities and streams, sync state, backup and restore entry points.</td></tr>
+<tr><td><code>DesktopActivityService</code></td><td>Adds <code>compute</code>, <code>computeSplit</code>, <code>recalculate*</code> and <code>recalculate$</code> progress. Removing an activity also removes its streams.</td></tr>
+<tr><td><code>DesktopMigrationService</code></td><td>Version detection and migration pipeline (see <a href="data-layer.html#migrations">migrations</a>).</td></tr>
+<tr><td><code>DesktopBackupService</code></td><td>Chunked backup and restore over IPC.</td></tr>
+<tr><td><code>DesktopUpdateService</code></td><td>Startup update check, periodic check (default every 15 minutes), download progress, static-download fallback.</td></tr>
+<tr><td><code>StravaConnectorInfoService</code>, <code>StravaConnectorService</code></td><td>Strava credentials storage; OAuth link through main (<code>Channel.stravaLink</code>); persists refreshed tokens from sync events.</td></tr>
+<tr><td><code>FileConnectorInfoService</code>, <code>FileConnectorService</code></td><td>File connector config in <code>localStorage</code>; validates the source folder and drops it when invalid.</td></tr>
+<tr><td><code>MachineService</code>, <code>RuntimeInfoService</code></td><td>Machine identity and JWT, periodic check-in to the backend, request authentication.</td></tr>
+<tr><td><code>DesktopInsightsService</code></td><td>Gzips non-manual activities and uploads them to the backend.</td></tr>
+<tr><td><code>MapTokenService</code></td><td>Mapbox token: user token, else backend token, else a random bundled fallback.</td></tr>
+<tr><td>Activity view services</td><td><code>ActivityViewService</code>, <code>ActivitySensorsService</code>, <code>ActivityStatsService</code>, <code>TimeInZonesService</code> (scoped to <code>ActivityViewModule</code>).</td></tr>
+</tbody></table></div>
+
+<h3>Extension-only services</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Service</th><th>Responsibility</th></tr></thead>
+<tbody>
+<tr><td><code>ChromiumService</code></td><td>Wraps <code>chrome.tabs</code> and <code>chrome.runtime.onMessage</code>. Exposes <code>externalMessages$</code>, filtered to messages from this extension id.</td></tr>
+<tr><td><code>ExtensionSyncService</code></td><td>Opens <code>strava.com/dashboard?elevateSync=true&amp;fastSync=..&amp;forceSync=..</code> in a new tab; the extension content script performs the sync and writes storage.</td></tr>
+<tr><td><code>ExtensionAppService</code></td><td>Reloads the datastore on <code>ON_EXTERNAL_DB_CHANGE</code>.</td></tr>
+<tr><td><code>ExtensionUserSettingsService</code></td><td>Sets <code>localStorageMustBeCleared</code> after zone changes so strava.com scripts drop their caches.</td></tr>
+</tbody></table></div>
+
+<h2 id="sync-desktop">Flow: desktop synchronisation</h2>
+<pre><code>User clicks sync (DesktopSyncMenuComponent) → DesktopSyncService.sync(fastSync, forceSync, connectorType)
+ 1. gather in parallel: athlete, user settings, "sync from" time (fast sync only), most recent activity,
+    connector info (Strava from DB, File from localStorage)
+       Strava "sync from" = most recent activity startTimestamp * 1000
+       File   "sync from" = connectorSyncDateTime[FILE].syncDateTime
+ 2. (re)subscribe to IpcSyncMessagesListener.syncEvents$ → handleSyncEvents()
+ 3. File connector: validate source folder, else WarningException "Go to connectors"
+ 4. IPC send startSync(connectorType, connectorInfo, athlete, userSettings, syncFromDateTime)
+ 5. on main's ack: isSyncing$.next(true)
+
+Main process (desktop/) runs the connector, computes each activity with ActivityComputer
+(@elevate/shared), and calls back into the renderer:
+   findActivity(start, end)   → renderer queries ActivityDao.findByDatedSession  (dedup / update)
+   findStreams(activityId)    → renderer returns deflated streams
+   syncEvent(event)           → renderer handles:
+
+ STARTED / STOPPED / GENERIC / STRAVA_CREDENTIALS_UPDATE → forwarded to syncEvents$ (UI)
+     STRAVA_CREDENTIALS_UPDATE is also persisted by StravaConnectorInfoService
+ ACTIVITY  → activityService.put(activity) → streamsService.put(deflated) → forward
+             on DB error: stop sync, emit SYNC_ERROR_UPSERT_ACTIVITY_DATABASE, throw to ErrorHandler
+ ERROR     → fatal codes (unauthorized, forbidden, quotas, unhandled, upsert, missing folder): forward + stop
+             non-fatal codes (compute, multiple activities, already started, 404, timeout): forward
+             unknown: throw SyncException
+ COMPLETE  → put connectorSyncDateTime(now) → persist(true)
+             → push insights (delta since previous last activity, or replace all)
+             → isSyncing$.next(false) → forward
+
+AppService: isSyncing$ false ⇒ historyChanges$ ⇒ verifyHistoryCompliance()</code></pre>
+
+<h3>Sync state</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Target</th><th>NOT_SYNCED</th><th>PARTIALLY_SYNCED</th><th>SYNCED</th></tr></thead>
+<tbody>
+<tr><td>Desktop</td><td>No connector sync time, and no activities or only manual ones</td><td>No connector sync time but some connector activities (interrupted first sync)</td><td>At least one connector sync time</td></tr>
+<tr><td>Extension</td><td>No sync time and no activities</td><td>Activities but no sync time</td><td>Sync time present</td></tr>
+</tbody></table></div>
+<p>Many UI components gate their content on <code>SyncState</code> and show <code>ActivitiesRequiredComponent</code> otherwise.</p>
+
+<h2 id="sync-ext">Flow: extension synchronisation</h2>
+<pre><code>ExtensionSyncService.sync(fast, force)
+ → chrome.tabs.create("https://www.strava.com/dashboard?elevateSync=true&amp;fastSync=..&amp;forceSync=..")
+ → snackbar "Sync just started in a new tab"   (sync() resolves immediately)
+webextension content script scrapes Strava, writes chrome.storage.local
+background.ts → app:  ON_EXTERNAL_SYNC_START  → isSyncing$.next(true)
+                      ON_EXTERNAL_SYNC_DONE   → isSyncing$.next(false), close tab, window.location.reload()
+                      ON_EXTERNAL_DB_CHANGE   → dataStore.reload()
+tab closed by user while syncing → isSyncing$.next(false)
+stop() throws "ExtensionSyncService do not support sync stop"</code></pre>
+
+<h2 id="recalc">Flow: recalculation (desktop)</h2>
+<p>Recalculation re-runs the compute engine for stored activities with the current athlete settings and user settings. It is triggered by migrations that request it, by the recalculate bar after athlete settings changes, by the activity view, and by the advanced menu.</p>
+<pre><code>recalculate(activities, userSettings)
+  guard: isRecalculating → reject WarningException "job already running"
+  sequentially (Array.reduce over promises), for each activity:
+     athleteSnapshotResolver.update()                ← reloads the athlete model EVERY activity
+     snapshot = resolve(activity.startTime)
+     streams = streamsService.getInflatedById(id)
+     manual activity → only refresh athleteSnapshot, put()
+     else            → IPC computeActivity(activity, snapshot, streams, userSettings) → put()
+     recalculate$.next({ index, total, started: index==0, ended: index==last })
+  isRecalculating = false
+  verifyActivitiesWithSettingsLacking()
+  persist(true)
+  push all activities to insights (replace all)
+DesktopSyncService maps recalculate$ started/ended to isSyncing$ true/false so the UI locks during the job.</code></pre>
+
+<h2 id="compliance">Flow: history compliance checks</h2>
+<p><code>AppService.verifyHistoryCompliance()</code> runs after app init (if synced) and after every sync end. It drives two shell bars.</p>
+<ul>
+  <li><strong>Settings lacks</strong>: <code>count({ settingsLack: true }) &gt; 0</code> → <code>activitiesWithSettingsLacks$</code> → recalculate bar suggests filling missing thresholds (<code>ActivitiesSettingsLacksDialogComponent</code>).</li>
+  <li><strong>Consistency</strong>: for every activity, resolve the athlete snapshot for its date and compare with the stored snapshot through <code>AthleteSnapshot.equals()</code> → <code>athleteSettingsConsistency$</code> → recalculate bar offers to recalculate. This is a full scan of all activities.</li>
+</ul>
+
+<h2 id="manual">Flow: manual activity entry (desktop)</h2>
+<p><code>DesktopManualActivityDialogComponent</code> builds a partial activity and calls <code>ActivityService.createManualEntry()</code>. It clones the input, sets times, converts imperial units, rejects overlaps with existing activities, attaches the athlete snapshot, computes average speed and pace and stress-per-hour scores, generates <code>id</code> as a SHA-256 of time plus <code>Math.random()</code> and <code>hash</code> as a SHA-256 of type, times, trainer and distance, then inserts.</p>
+
+<h2 id="ipc">The Electron IPC tunnel</h2>
+<p>Contract files are in <code>modules/shared/electron/</code> and are compiled into both renderer and main.</p>
+<ul>
+  <li><code>BridgeApi</code>: the surface exposed by <code>desktop/src/pre-loading/pre-loader.ts</code> as <code>window.api</code>. Typed helpers for window control and fs checks, plus generic <code>invoke</code>, <code>receive</code> and <code>unsubscribe</code>. <code>invoke</code> accepts any channel and wraps the arguments into an array, which is why payloads are positional arrays.</li>
+  <li><code>Channel</code>: string enum of every channel.</li>
+  <li><code>IpcMessage</code>: <code>{ channel, payload: any[] }</code>. Payloads are positional arrays, destructured on the other side.</li>
+  <li><code>IpcTunnel</code>: one class for both sides. Renderer to main uses <code>bridgeApi.invoke</code>, a proper request and response. Main to renderer uses <code>webContents.send</code> and waits for a single message on <code>&lt;channel&gt;-response</code> with <code>ipcMain.once</code>. Errors travel as values and are re-thrown if they are <code>instanceof Error</code>.</li>
+</ul>
+<div class="table-wrap"><table>
+<thead><tr><th>Group</th><th>Channels</th><th>Direction</th></tr></thead>
+<tbody>
+<tr><td>Window and shell</td><td class="wrap"><code>minimizeApp</code> <code>maximizeApp</code> <code>unMaximizeApp</code> <code>isMaximized</code> <code>restoreApp</code> <code>enableFullscreen</code> <code>disableFullscreen</code> <code>isFullscreen</code> <code>closeApp</code> <code>restartApp</code> <code>resetApp</code> <code>getPath</code> <code>clearStorageData</code> <code>showOpenDialogSync</code> <code>openExternal</code> <code>openPath</code> <code>showItemInFolder</code> <code>getLogFilePath</code></td><td>renderer → main</td></tr>
+<tr><td>File system</td><td class="wrap"><code>existsSync</code> <code>isDirectory</code> <code>isFile</code></td><td>renderer → main</td></tr>
+<tr><td>Sync control</td><td class="wrap"><code>startSync</code> <code>stopSync</code></td><td>renderer → main</td></tr>
+<tr><td>Sync callbacks</td><td class="wrap"><code>syncEvent</code> <code>findActivity</code> <code>findStreams</code></td><td>main → renderer</td></tr>
+<tr><td>Compute</td><td class="wrap"><code>computeActivity</code> <code>computeSplits</code></td><td>renderer → main</td></tr>
+<tr><td>Backup</td><td class="wrap"><code>backupInit</code> <code>backupWriteObj</code> <code>restoreInit</code></td><td>renderer → main</td></tr>
+<tr><td>Restore stream</td><td class="wrap"><code>restoreReadObj</code></td><td>main → renderer</td></tr>
+<tr><td>Updates</td><td class="wrap"><code>listUpdates</code> <code>checkForUpdate</code> <code>updateApp</code></td><td>renderer → main</td></tr>
+<tr><td>Update progress</td><td class="wrap"><code>updateDownloadProgress</code></td><td>main → renderer</td></tr>
+<tr><td>Other</td><td class="wrap"><code>ipcStorage</code> <code>stravaLink</code> <code>runtimeInfo</code></td><td>renderer → main</td></tr>
+</tbody></table></div>
+<div class="callout warn">
+  <span class="label">Architectural inversion</span>
+  <p>The database lives in the renderer, but the sync engine lives in main. Main must call back into the renderer (<code>findActivity</code>, <code>findStreams</code>) for every candidate activity, and push each result back (<code>syncEvent</code>). Sync throughput is bound by IPC round trips and by the renderer's single thread, and the UI must stay open for a sync to run. Main-to-renderer requests have no correlation id, so two concurrent requests on the same channel could receive each other's response.</p>
+</div>
+
+<h2 id="remote">Remote services</h2>
+<p>All calls below are made from the desktop renderer, except the help FAQ and Google Fonts, which both targets load.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Endpoint</th><th>Caller</th><th>When</th><th>Payload</th><th>Auth</th></tr></thead>
+<tbody>
+<tr><td><code>POST {backend}/machine/auth</code></td><td><code>MachineService.auth()</code></td><td>When an authenticated call returns 401 or 403</td><td>machine id and key</td><td>none; returns JWT in <code>X-Elevate-Token</code> header, stored in <code>localStorage</code></td></tr>
+<tr><td><code>PUT {backend}/machine/checkIn</code></td><td><code>MachineService.checkIn()</code></td><td>At startup and every 5 minutes</td><td><code>Machine</code>: id, key, version, runtime info, <strong>full athlete model</strong>, SHA-256 of Strava athlete id</td><td>not matched by the auth regex, so sent without the token</td></tr>
+<tr><td><code>POST {backend}/insights/activities/upsert/{id}</code> and <code>/replaceAll/{id}</code></td><td><code>DesktopInsightsService</code></td><td>After sync complete and after recalculation</td><td>gzipped <code>InsightActivity[]</code> (non-manual activities)</td><td>Bearer JWT, auto re-auth</td></tr>
+<tr><td><code>GET {backend}/map/token</code></td><td><code>MapTokenService</code></td><td>Opening a map without a user token</td><td>none</td><td>Bearer JWT, auto re-auth</td></tr>
+<tr><td>GitHub releases API</td><td><code>VersionsProvider</code></td><td>After upgrade, releases notes page</td><td>none</td><td>none</td></tr>
+<tr><td>Sentry</td><td><code>DesktopElevateErrorHandler</code></td><td>Unhandled errors, production only</td><td>exception plus context: athlete gender, first and last name, practice level, machine id, OS username and hostname, CPU, memory</td><td>DSN in source</td></tr>
+<tr><td>raw.githubusercontent.com (<code>elevate-docs</code>)</td><td><code>HelpComponent</code></td><td>Opening Help</td><td>none</td><td>none</td></tr>
+<tr><td>Mapbox, Google Fonts</td><td>map component, <code>index.html</code></td><td>On use</td><td>tile and font requests</td><td>map token</td></tr>
+</tbody></table></div>
+<p><code>MachineAuthenticatedService.ensureAuthenticated()</code> catches 401 and 403 and replays the request after <code>auth()</code> with <code>concat(auth(), caught)</code>. There is no retry limit.</p>
+
+<h2 id="updates">Flow: application updates</h2>
+<ol>
+  <li>During startup, <code>DesktopUpdateService.handleUpdate()</code> sends <code>updateApp(acceptPreReleases)</code>. Main returns an <code>UpdateNotify</code> or nothing.</li>
+  <li>If there is an update, <code>updateNotify$</code> drives <code>DesktopUpdateBarComponent</code>. Startup waits on <code>updateHandledPromise</code>, resolved by <code>skipStaticUpdate()</code> or by an error.</li>
+  <li>Auto-updatable platforms receive <code>updateDownloadProgress</code> events until 100. Static platforms open the download and release pages in the browser and close the app.</li>
+  <li>A <code>setInterval</code> calls <code>checkForUpdate()</code> every <code>config.update.checkIntervalSec</code> seconds, default 900.</li>
+</ol>
+
+<h2 id="errors">Error handling and logging</h2>
+<pre><code>ElevateErrorHandler.handleError(error)          (Angular ErrorHandler, per target)
+  unwrap promise rejection (error.rejection)
+  string → new Error(string)
+  WarningException  → snackbar (message, optional action and duration) → STOP
+  SyncException     → "Sync error: …"
+  other ElevateException → "Elevate error: …"
+  other             → error.message
+  displayViewErrorAction(message, error)
+      desktop:   snackbar "An unhandled error occurred" [Help] → ConfirmDialog with error.stack
+                 → optional "Reset app" → second confirm → electronService.resetApp()
+      extension: snackbar [View] → GotItDialog with error.stack
+  onErrorHandled(error)  desktop prod: Sentry.captureException</code></pre>
+<p>Exception classes live in <code>modules/shared/exceptions</code>: <code>ElevateException</code> (base), <code>WarningException</code> (user-facing, non-fatal, optional action callback), <code>SyncException</code>, <code>InconsistentParametersException</code>, <code>NotImplementedException</code>. Domain validation errors use <code>AppError</code> (code plus message) from <code>shared/models/app-error.model.ts</code>, which is not an <code>Error</code> subclass.</p>
+<p>Idiom used throughout: services throw <code>WarningException</code> to get a friendly snackbar from the global handler, and components rethrow anything else so the handler shows the stack. Promise rejections not caught by components reach the handler through Zone.js.</p>
+
+</main>
+</div>
+</body>
+</html>

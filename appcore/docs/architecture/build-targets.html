@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build Targets and Bootstrapping</title>
+<meta name="description" content="How appcore compiles into two apps: file replacements, DI graphs, startup and routing.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="layout">
+<nav class="side" aria-label="Documentation">
+  <div class="brand">Elevate <span>appcore</span></div>
+  <div class="sub">Architecture documentation · v7.2.2</div>
+  <ol><li><a href="index.html">Overview</a></li><li><a href="build-targets.html" aria-current="page">Build targets & boot</a></li><li><a href="data-layer.html">Data & persistence</a></li><li><a href="services-flows.html">Services, IPC & flows</a></li><li><a href="features.html">Feature modules</a></li><li><a href="assessment.html">Strengths & weaknesses</a></li><li><a href="ai-guide.html">AI working guide</a></li></ol>
+  <div class="toc"><a href="#configs">Build configurations</a><a href="#replacements">File replacements: the core trick</a><a href="#modules">Module graph</a><a href="#di">The two dependency injection graphs</a><a href="#shell">Dynamic shell widgets</a><a href="#startup">Startup sequence</a><a href="#routing">Routing</a><a href="#theming">Theming and styles</a></div>
+</nav>
+<main>
+<h1>Build targets and bootstrapping</h1>
+<p class="lead">Appcore uses compile-time module substitution to produce two applications from one tree. This page explains the substitution mechanism, the resulting dependency injection graphs, the startup sequence and routing.</p>
+
+<h2 id="configs">Build configurations</h2>
+<p>All four configurations live in <code>angular.json</code> under <code>projects.app.architect.build.configurations</code>. The default output path is <code>../dist/app/</code>, but the host projects override it.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Configuration</th><th>Used by</th><th>Environment file</th><th>Notable options</th></tr></thead>
+<tbody>
+<tr><td><code>extension</code></td><td><code>webextension</code> dev and watch</td><td><code>environment.ts</code> (default, extension dev)</td><td>Optimised scripts, source maps, no hashing.</td></tr>
+<tr><td><code>extension-prod</code></td><td><code>webextension</code> package</td><td><code>environment.prod.ts</code></td><td>Build optimiser, hashed output, budgets 3 MB warn and 5 MB error on initial bundle.</td></tr>
+<tr><td><code>desktop</code></td><td><code>desktop</code> dev</td><td><code>environment.desktop.ts</code></td><td><strong>AOT disabled</strong>, no optimisation, adds Mapbox CSS.</td></tr>
+<tr><td><code>desktop-prod</code></td><td><code>desktop</code> production</td><td><code>environment.desktop.prod.ts</code></td><td>AOT (inherited), optimiser, hashed output, Mapbox CSS.</td></tr>
+</tbody></table></div>
+<p>Host scripts call the CLI directly. For example the extension runs <code>ng build --configuration=extension --output-path=../webextension/dist/app/</code>. There is no <code>production</code> configuration, although <code>serve.configurations.production</code> references one, so <code>ng serve --configuration=production</code> fails.</p>
+
+<h2 id="replacements">File replacements: the core trick</h2>
+<p>Three files are placeholders in the source tree. Each configuration replaces them with a target-specific file.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Placeholder</th><th>Desktop replacement</th><th>Extension replacement</th><th>Placeholder content</th></tr></thead>
+<tbody>
+<tr><td><code>src/environments/environment.ts</code></td><td><code>environment.desktop.ts</code> or <code>environment.desktop.prod.ts</code></td><td>itself, or <code>environment.prod.ts</code></td><td>Extension dev settings.</td></tr>
+<tr><td><code>src/app/boot/target-boot.module.ts</code></td><td><code>desktop-boot.module.ts</code></td><td><code>extension-boot.module.ts</code></td><td>Only <code>RouterModule.forRoot([])</code>.</td></tr>
+<tr><td><code>src/app/shared/modules/target/target.module.ts</code></td><td><code>desktop-target.module.ts</code></td><td><code>extension-target.module.ts</code></td><td>Only <code>RouterModule.forRoot([])</code>.</td></tr>
+</tbody></table></div>
+<p>The replacement files export a class with the <strong>same name</strong> (<code>TargetBootModule</code>, <code>TargetModule</code>) so the import sites in <code>app.module.ts</code> and <code>shared.module.ts</code> never change.</p>
+
+<div class="callout warn">
+  <span class="label">Consequence</span>
+  <p>The placeholder modules contain no providers. Anything compiled without a configuration, including the IDE language service, the <code>type:check</code> script and Jest, sees an app with no <code>DataStore</code>, no <code>ActivityService</code> and so on. Specs work around this by importing <code>desktop-target.module</code> or <code>extension-target.module</code> directly. Of the specs that import a target module, 44 import the desktop one and 3 the extension one, so the extension DI graph is barely tested.</p>
+</div>
+
+<h3>Environment variables</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Key</th><th>Extension dev</th><th>Extension prod</th><th>Desktop dev</th><th>Desktop prod</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>buildTarget</code></td><td>EXTENSION</td><td>EXTENSION</td><td>DESKTOP</td><td>DESKTOP</td><td>Runtime branching, default user settings.</td></tr>
+<tr><td><code>production</code></td><td>false</td><td>true</td><td>false</td><td>true</td><td><code>enableProdMode</code>, Sentry, debug globals.</td></tr>
+<tr><td><code>logLevel</code></td><td>DEBUG</td><td>INFO</td><td>DEBUG</td><td>INFO</td><td><code>ConsoleLoggerService</code> filter.</td></tr>
+<tr><td><code>minBackupVersion</code></td><td>7.0.0-0</td><td>7.0.0-0</td><td>7.0.0-beta.0</td><td>7.0.0-beta.0</td><td>Oldest backup accepted on restore.</td></tr>
+<tr><td><code>showDebugRibbon</code></td><td>false</td><td>false</td><td>true</td><td>false</td><td>Debug bar with wipe, reload and restart buttons.</td></tr>
+<tr><td><code>showActivityDebugData</code></td><td>false</td><td>false</td><td>false</td><td>false</td><td>Debug stats in activity view.</td></tr>
+<tr><td><code>showRouteUrl</code></td><td>false</td><td>false</td><td>true</td><td>false</td><td>Shows current route.</td></tr>
+<tr><td><code>bypassProfileRestoreChecks</code></td><td>false</td><td>false</td><td>false</td><td>false</td><td>Skips backup version check.</td></tr>
+<tr><td><code>backendBaseUrl</code></td><td>null</td><td>null</td><td><code>http://localhost:8081</code></td><td><code>https://api.elevate-app.duckdns.org</code></td><td>Elevate backend for machine, insights and map token.</td></tr>
+</tbody></table></div>
+
+<h2 id="modules">Module graph</h2>
+<pre><code>AppModule  (bootstrap: AppLoadComponent)
+├── SharedModule
+│   ├── CoreModule            Common, Forms, Material, HttpClient, FlexLayout, NgPipes, Clipboard
+│   │                         + KatexExpressionComponent, ActivitiesRequiredComponent
+│   ├── BrowserModule, BrowserAnimationsModule
+│   ├── TargetModule          ◄── swapped: desktop-target / extension-target
+│   │   ├── CoreModule
+│   │   └── DesktopRoutingModule | ExtensionRoutingModule   (RouterModule.forRoot, lazy routes)
+│   └── providers: DAOs (User settings, Athlete, Activity, Streams), StreamsService,
+│                  AthleteSnapshotResolverService, GlobalSettingsService, SideNavService,
+│                  ReleaseNoteService, ComponentsFactoryService, LoggerService→ConsoleLoggerService
+└── TargetBootModule          ◄── swapped: desktop-boot / extension-boot
+    ├── CoreModule
+    ├── DesktopRoutingModule | ExtensionRoutingModule   (same routing module imported again)
+    └── providers: ErrorHandler, AppLoadService, AppService, shell component tokens, ...</code></pre>
+<p>Both swapped modules import the same routing module. Angular de-duplicates the module, so <code>forRoot</code> runs once, but the routing concern is declared in two places.</p>
+
+<h2 id="di">The two dependency injection graphs</h2>
+<p>Abstract classes act as injection tokens. Each target module binds them to concrete classes with <code>{ provide: Abstract, useClass: Concrete }</code>. Consumers inject the abstract type and, when they need target-only methods, cast it by annotating the parameter with the concrete type (for example <code>@Inject(ActivityService) activityService: DesktopActivityService</code>).</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Abstract token</th><th>Desktop binding</th><th>Extension binding</th></tr></thead>
+<tbody>
+<tr><td><code>DataStore</code></td><td><code>DesktopDataStore</code> (IndexedDB incremental adapter)</td><td><code>ExtensionDataStore</code> (<code>chrome.storage.local</code> adapter)</td></tr>
+<tr><td><code>ActivityService</code></td><td><code>DesktopActivityService</code> (adds compute and recalculation over IPC)</td><td><code>ExtensionActivityService</code> (no additions)</td></tr>
+<tr><td><code>SyncService</code></td><td><code>DesktopSyncService</code> (IPC connectors)</td><td><code>ExtensionSyncService</code> (opens a Strava tab)</td></tr>
+<tr><td><code>AthleteService</code></td><td><code>DesktopAthleteService</code></td><td><code>ExtensionAthleteService</code></td></tr>
+<tr><td><code>UserSettingsService</code></td><td><code>DesktopUserSettingsService</code></td><td><code>ExtensionUserSettingsService</code> (flags local storage clearing)</td></tr>
+<tr><td><code>VersionsProvider</code></td><td><code>DesktopVersionsProvider</code> (IPC storage, GitHub via main)</td><td><code>ExtensionVersionsProvider</code></td></tr>
+<tr><td><code>WindowService</code></td><td><code>DesktopWindowService</code></td><td><code>ExtensionWindowService</code></td></tr>
+<tr><td><code>OPEN_RESOURCE_RESOLVER</code> (token)</td><td><code>DesktopOpenResourceResolver</code></td><td><code>ExtensionOpenResourceResolver</code></td></tr>
+<tr><td><code>IPC_TUNNEL_SERVICE</code> (token)</td><td><code>IpcRendererTunnelService</code></td><td>not provided</td></tr>
+<tr><td><code>AppLoadService</code> (boot)</td><td><code>DesktopLoadService</code></td><td><code>ExtensionLoadService</code></td></tr>
+<tr><td><code>AppService</code> (boot)</td><td><code>DesktopAppService</code></td><td><code>ExtensionAppService</code></td></tr>
+<tr><td><code>ErrorHandler</code> (boot)</td><td><code>DesktopElevateErrorHandler</code> (Sentry)</td><td><code>ExtensionElevateErrorHandler</code></td></tr>
+<tr><td><code>MENU_ITEMS_PROVIDER</code> (boot)</td><td><code>DesktopMenuItemsProvider</code></td><td><code>ExtensionMenuItemsProvider</code></td></tr>
+<tr><td><code>HTTP_INTERCEPTORS</code> (boot)</td><td><code>DesktopHttpInterceptor</code> adds the machine token</td><td>none</td></tr>
+</tbody></table></div>
+<p>Desktop-only concrete services provided by <code>desktop-target.module.ts</code>: <code>ElectronService</code>, <code>IpcStorageService</code>, <code>DesktopUpdateService</code>, <code>IpcSyncMessagesListener</code>, <code>IpcSyncMessageSender</code>, <code>DesktopMigrationService</code>, <code>DesktopBackupService</code>, <code>StravaConnectorInfoService</code>, <code>FileConnectorInfoService</code>, <code>DesktopInsightsService</code>, <code>MapTokenService</code>, <code>MachineService</code>, <code>RuntimeInfoService</code>, the DAOs <code>ConnectorSyncDateTimeDao</code>, <code>PropertiesDao</code>, <code>StravaConnectorInfoDao</code>. Extension-only: <code>SyncDateTimeDao</code>, and <code>ChromiumService</code> from the boot module.</p>
+
+<div class="callout ai">
+  <span class="label">For AI assistants</span>
+  <p>Services are almost all module-provided (not <code>providedIn: 'root'</code>). A new service will not be injectable until you add it to the right <code>providers</code> array: <code>SharedModule</code> for both targets, <code>desktop-target.module.ts</code> or <code>extension-target.module.ts</code> for one target, or the feature module for feature-scoped services. The only <code>providedIn: 'root'</code> classes are the error handlers and <code>ConsoleLoggerService</code>.</p>
+</div>
+
+<h2 id="shell">Dynamic shell widgets</h2>
+<p>The application shell in <code>app.component.html</code> contains empty anchor directives. At init, <code>AppComponent</code> creates a target-specific component inside each anchor through <code>ComponentsFactoryService</code> (a wrapper over the deprecated <code>ComponentFactoryResolver</code>).</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Anchor directive</th><th>Injection token</th><th>Abstract base</th><th>Desktop component</th><th>Extension component</th></tr></thead>
+<tbody>
+<tr><td><code>appSplashScreen</code></td><td><code>SPLASH_SCREEN_COMPONENT</code></td><td><code>SplashScreenComponent</code></td><td><code>DesktopSplashScreenComponent</code></td><td><code>ExtensionSplashScreenComponent</code></td></tr>
+<tr><td><code>appTopBar</code></td><td><code>TOP_BAR_COMPONENT</code></td><td><code>TopBarComponent</code></td><td><code>DesktopTopBarComponent</code> (window controls)</td><td><code>ExtensionTopBarComponent</code></td></tr>
+<tr><td><code>appUpdateBar</code></td><td><code>UPDATE_BAR_COMPONENT</code></td><td><code>UpdateBarComponent</code></td><td><code>DesktopUpdateBarComponent</code></td><td><code>ExtensionUpdateBarComponent</code></td></tr>
+<tr><td><code>appSyncBar</code></td><td><code>SYNC_BAR_COMPONENT</code></td><td><code>SyncBarComponent</code></td><td><code>DesktopSyncBarComponent</code></td><td><code>ExtensionSyncBarComponent</code></td></tr>
+<tr><td><code>appRecalculateActivitiesBar</code></td><td><code>RECALCULATE_ACTIVITIES_BAR_COMPONENT</code></td><td><code>RecalculateActivitiesBarComponent</code></td><td><code>DesktopRecalculateActivitiesBarComponent</code></td><td><code>ExtensionRecalculateActivitiesBarComponent</code></td></tr>
+<tr><td><code>appSyncMenu</code></td><td><code>SYNC_MENU_COMPONENT</code></td><td><code>SyncMenuComponent</code></td><td><code>DesktopSyncMenuComponent</code></td><td><code>ExtensionSyncMenuComponent</code></td></tr>
+<tr><td><code>appMoreMenu</code></td><td><code>APP_MORE_MENU_COMPONENT</code></td><td><code>AppMoreMenuComponent</code></td><td><code>DesktopAppMoreMenuComponent</code></td><td><code>ExtensionAppMoreMenuComponent</code></td></tr>
+</tbody></table></div>
+<p>Each anchor directive just exposes its <code>ViewContainerRef</code>. Each token is provided with <code>useValue: ComponentClass</code> in the boot module, and the concrete component is declared there too.</p>
+
+<h2 id="startup">Startup sequence</h2>
+<pre><code>main.ts
+ ├─ enableProdMode() if environment.production
+ ├─ document.body.class = Theme.DEFAULT
+ └─ bootstrapModule(AppModule) ─► &lt;app-load&gt; (AppLoadComponent)
+
+AppLoadComponent.ngOnInit
+ ├─ create splash screen component in appSplashScreen anchor
+ └─ AppLoadService.loadApp()
+      │
+      ├─ DESKTOP: DesktopLoadService.loadApp()
+      │    1. super.loadApp(): wait for DataStore.dbEvent$ === LOADED (Loki autoload finished)
+      │    2. DesktopMigrationService.upgrade()         detect version change, run migrations, persist
+      │    3. DesktopUpdateService.handleUpdate()       ask main for an update; may block on user choice
+      │    4. FileConnectorInfoService.ensureSourceDirectoryCompliance()
+      │    5. if upgraded: VersionsProvider.notifyInstalledVersion() → release notes dialog (GitHub API)
+      │    6. if first install: GotIt dialog → navigate to athleteSettings
+      │    7. after a tick: MachineService.checkIn() now and every 5 minutes (setInterval)
+      │
+      └─ EXTENSION: ExtensionLoadService.loadApp()
+           sleep(750 ms) only. It does NOT wait for the database LOADED event.
+
+ then: splash.destroy(); AppService.init()
+ AppService.init()
+ ├─ loadTheme() from localStorage "theme"
+ ├─ isAppLoaded = true  ─► *ngIf renders &lt;app-root&gt; (AppComponent)
+ ├─ if SyncState ≥ PARTIALLY_SYNCED: after 1.5 s verifyHistoryCompliance()
+ │     ├─ ActivityService.verifyActivitiesWithSettingsLacking()   → activitiesWithSettingsLacks$
+ │     └─ ActivityService.verifyConsistencyWithAthleteSettings()  → athleteSettingsConsistency$
+ └─ DESKTOP only (DesktopAppService): if a migration requested it, recalculateAll() with a snackbar
+
+AppComponent.ngOnInit / initApp()
+ ├─ create the six shell widgets in their anchors
+ ├─ apply theme to body and CDK overlay container, subscribe to themeChanges$
+ ├─ menu items from MENU_ITEMS_PROVIDER, names derived from route names (_.startCase)
+ └─ side nav open state from localStorage "app_sideNavOpened"</code></pre>
+
+<div class="callout bad">
+  <span class="label">Fragile point</span>
+  <p>The extension load path relies on a fixed 750 ms delay instead of the database <code>LOADED</code> event. On a large <code>chrome.storage.local</code> payload, early reads can hit an empty in-memory database, and <code>findOne()</code> on an empty collection inserts the default document. See <a href="assessment.html#defects">defects</a>.</p>
+</div>
+
+<h2 id="routing">Routing</h2>
+<p>Both routing modules use <code>RouterModule.forRoot(routes, { useHash: true })</code>, so URLs look like <code>index.html#/fitnessTrend</code>. Every route is lazy-loaded with <code>loadChildren</code>. The empty path redirects to <code>activities</code>. Route names are defined once in <code>shared/models/app-routes.ts</code> (<code>AppRoutes</code>). Toolbar and menu titles are derived from the route name with <code>_.startCase</code>, so renaming a route renames the UI label too.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Path</th><th>Module</th><th>Desktop</th><th>Extension</th></tr></thead>
+<tbody>
+<tr><td><code>activities</code></td><td><code>ActivitiesModule</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>activity/:id</code></td><td><code>ActivityViewModule</code></td><td>yes</td><td>no</td></tr>
+<tr><td><code>fitnessTrend</code></td><td><code>FitnessTrendModule</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>yearProgressions</code></td><td><code>YearProgressModule</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>globalSettings</code></td><td><code>GlobalSettingsModule</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>athleteSettings</code></td><td><code>AthleteSettingsModule</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>zonesSettings</code></td><td><code>ZonesSettingsModule</code></td><td>yes</td><td>yes</td></tr>
+<tr><td><code>connectors</code></td><td><code>ConnectorsModule</code></td><td>yes</td><td>no</td></tr>
+<tr><td><code>dashboard</code>, <code>goals</code></td><td>placeholders ("Coming during beta")</td><td>routed, hidden from menu</td><td>no</td></tr>
+<tr><td><code>desktopApp</code></td><td><code>DownloadDesktopAppModule</code></td><td>no</td><td>yes</td></tr>
+<tr><td><code>advancedMenu</code></td><td>desktop and extension variants</td><td>yes</td><td>yes</td></tr>
+<tr><td><code>donate</code>, <code>releasesNotes</code>, <code>report</code>, <code>help</code></td><td>shared</td><td>yes</td><td>yes</td></tr>
+</tbody></table></div>
+<p>There are no route guards and no resolvers. Feature components fetch their own data in <code>ngOnInit</code>.</p>
+
+<h2 id="theming">Theming and styles</h2>
+<p>Themes are Angular Material SCSS themes in <code>src/app/styles/themes/</code> (<code>light.scss</code>, <code>dark.scss</code>), wired by <code>theming-setup.scss</code>. The active theme is a class on <code>body</code> and on the CDK overlay container. Components that need theme colours provide a <code>*.theme.scss</code> mixin (for example <code>app.component.theme.scss</code>). The theme choice is stored in <code>localStorage["theme"]</code>. Global CSS also loads KaTeX, GitHub markdown and MetricsGraphics styles, plus Mapbox on desktop. Google Fonts (Material Icons, Roboto) load from the network in <code>index.html</code>, so the desktop app renders icons incorrectly when offline.</p>
+
+</main>
+</div>
+</body>
+</html>
