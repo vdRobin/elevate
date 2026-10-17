@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository layout
 
-Mono-repo with three npm projects plus a root wrapper. Each has its own `package.json` and `node_modules`; root `npm install` runs `postinstall` that installs all three. Node >= 16. Trunk-based: `main` on the `fork` remote is the trunk (see Branching below).
+Mono-repo with three npm projects plus a root wrapper. Each has its own `package.json` and `node_modules`; root `npm install` runs `postinstall` that installs all three. Node >= 16. Trunk-based: `main` on the `origin` remote (the fork) is the trunk (see Branching below).
 
 - `appcore/` — Angular 14 SPA (TypeScript 4.8, `strict: false`) shared by both products, plus the shared library `appcore/modules/shared` (`@elevate/shared`).
 - `desktop/` — Electron main process (tsyringe DI, rollup bundle, electron-builder packaging). Loads the appcore build in its window.
@@ -12,7 +12,7 @@ Mono-repo with three npm projects plus a root wrapper. Each has its own `package
 
 Detailed appcore architecture docs (data layer, flows, IPC channels, known defects, playbooks) live in `appcore/docs/architecture/` — start with `ai-guide.html`.
 
-This checkout is a fork (`fork` remote: `vdRobin/elevate`; `origin` is upstream `thomaschampagne/elevate`). Several runtime endpoints and identifiers still point at upstream services; see the P0 items in `.claude/skills/elevate-fix-defect/references/defect-catalog.md`.
+This checkout is a clone of the fork (`origin` remote: `vdRobin/elevate`; `upstream` remote: the original `thomaschampagne/elevate`). Several runtime endpoints and identifiers still point at upstream services; see the P0 items in `.claude/skills/elevate-fix-defect/references/defect-catalog.md`.
 
 Project skills in `.claude/skills/`: `elevate-fix-defect` (prioritised defect catalog), `elevate-verify` (`scripts/verify.sh` runs the right checks for changed files), `elevate-garmin-import`, `elevate-maps-gpx`, `elevate-ml-features`, `elevate-ai-assistant`.
 
@@ -65,12 +65,13 @@ Git hooks (`core.hooksPath=.husky`, logic in `scripts/git-hooks/`, mirrored in `
 ## Branching (trunk-based)
 
 - `main` is the only long-lived branch and stays releasable: every change merged into it passes `npm test` and both type checks. There are no `develop`, `release/*` or `hotfix/*` branches on the fork.
-- Branch from an up-to-date `main` and name the branch after the Conventional Commit type: `git fetch fork && git switch -c fix/recalc-stuck fork/main`.
+- Branch from an up-to-date `main` and name the branch after the Conventional Commit type: `git fetch origin && git switch -c fix/recalc-stuck origin/main`.
 - Keep branches short-lived (a day or two) and to one logical change. Split larger work into several pull requests; keep unfinished features unreachable (unrouted, behind a setting or a debug flag) rather than holding a long branch.
-- Update a branch by rebasing (`git rebase fork/main`), not by merging `main` into it.
-- Open pull requests against the fork, since `gh` otherwise targets upstream: `gh pr create --repo vdRobin/elevate --base main`. Squash-merge, then delete the branch.
+- Update a branch by rebasing (`git rebase origin/main`), not by merging `main` into it.
+- Make every change on that branch, push it to `origin` and open a pull request against the fork, since `gh` otherwise targets upstream: `gh pr create --repo vdRobin/elevate --base main`. Pull requests are Rebase-merged, then the branch is deleted.
+- **Never merge anything into `main` yourself**: no merging or rebasing into `main`, no commits or pushes to `main`, no `gh pr merge`. Open the pull request and leave the merge to the user.
 - Releases are tags on `main` in upstream's format (`7.2.3`, `7.3.0-beta.1`). A fix for a released version is an ordinary branch off `main` followed by a new tag.
-- Upstream (`origin`) still uses git-flow on `develop`. Bring its changes in on a branch (`git switch -c chore/sync-upstream fork/main && git merge origin/develop`) and merge that pull request with a merge commit, not a squash, so later upstream merges keep a common ancestor.
+- Upstream (`upstream` remote) still uses git-flow on `develop`. Bring its changes in on a branch (`git fetch upstream && git switch -c chore/sync-upstream origin/main && git merge upstream/develop`) and merge that pull request with a merge commit, not a squash, so later upstream merges keep a common ancestor.
 
 ## Big-picture architecture
 
