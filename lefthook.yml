@@ -1,5 +1,6 @@
-# Git hooks. Husky (core.hooksPath=.husky) and lefthook both run the same
-# scripts from scripts/git-hooks/, so the checks are identical whichever is used.
+# Git hooks. The installed hooks are the committed .husky/* scripts (core.hooksPath=.husky, set by
+# "npm install"). This file runs the same scripts from scripts/git-hooks/ for a globally installed
+# lefthook: use "lefthook run pre-commit" etc. Do not run "lefthook install": it overwrites .husky/*.
 #   https://github.com/evilmartians/lefthook/blob/master/docs/configuration.md
 #
 pre-commit:
