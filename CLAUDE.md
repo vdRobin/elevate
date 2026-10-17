@@ -57,10 +57,11 @@ Karma runs the whole suite; focus temporarily with `fdescribe`/`fit`. To use Chr
 
 Formatting: Prettier (print width 120, double quotes, no trailing commas, `arrowParens: avoid`) runs on staged files in the pre-commit hook when root dependencies are installed. Root `npm run prettier` formats everything.
 
-Git hooks (`core.hooksPath=.husky`, logic in `scripts/git-hooks/`, mirrored in `lefthook.yml`):
+Git hooks (`core.hooksPath=.husky`, set by root `npm install` via `scripts/git-hooks/install.js`; logic in `scripts/git-hooks/`, mirrored in `lefthook.yml`):
 - pre-commit blocks staged secrets (keys, tokens, `.env`/key files). Mark a false positive with a `secret-scan: allow` comment on the line.
 - commit-msg requires Conventional Commits (`feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert`, optional scope, optional `!`), header ≤ 72 characters, blank line before the body, body lines ≤ 100 characters (URLs and trailers exempt).
 - pre-push refuses pushes to (and deletion of) `main`, `master` and `develop` (`git config hooks.protectedBranches` to change). Changes reach `main` only through pull requests.
+- Don't add husky or lefthook back as npm dependencies: their install steps overwrite `.husky/*`.
 
 ## Branching (trunk-based)
 

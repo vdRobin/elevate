@@ -25,6 +25,10 @@ node_modules
 .prettierignore
 LICENSE
 
+# Shell scripts (the config forces the typescript parser)
+*.sh
+.husky
+
 # Project specific
 *.gpx
 *.tcx

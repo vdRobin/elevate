@@ -34,7 +34,7 @@
     "wipe": "npm run clean && npm run wipe:package-locks && npm run wipe:node-modules",
     "wipe:node-modules": "node ./node_modules/del-cli/cli.js ./node_modules/ ./appcore/node_modules/ ./desktop/node_modules/ ./webextension/node_modules/",
     "wipe:package-locks": "node ./node_modules/del-cli/cli.js ./package-lock.json ./appcore/package-lock.json ./desktop/package-lock.json ./webextension/package-lock.json",
-    "prepare": "npx husky"
+    "prepare": "node ./scripts/git-hooks/install.js"
   },
   "config": {
     "unsafe-perm": true
@@ -58,15 +58,9 @@
     "cpy-cli": "^3.1.1",
     "cross-env": "^7.0.3",
     "del-cli": "^4.0.1",
-    "lefthook": "^1.7.12",
     "npm-check-updates": "^12.2.1",
     "prettier": "^2.5.1",
     "pretty-quick": "^3.1.3",
     "run-sequence": "^2.2.1"
-  },
-  "husky": {
-    "hooks": {
-      "pre-commit": "pretty-quick --staged"
-    }
   }
 }

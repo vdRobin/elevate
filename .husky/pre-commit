@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs as a plain git hook (core.hooksPath=.husky) or through husky's shim.
+# Runs as a plain git hook (core.hooksPath=.husky, set by "npm install").
 ROOT=$(git rev-parse --show-toplevel) || exit 1
 
 sh "$ROOT/scripts/git-hooks/check-secrets.sh" || exit 1
