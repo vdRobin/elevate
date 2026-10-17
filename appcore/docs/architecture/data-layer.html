@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data and Persistence</title>
+<meta name="description" content="LokiJS data store, adapters, DAOs, collections, backups and migrations in appcore.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="layout">
+<nav class="side" aria-label="Documentation">
+  <div class="brand">Elevate <span>appcore</span></div>
+  <div class="sub">Architecture documentation · v7.2.2</div>
+  <ol><li><a href="index.html">Overview</a></li><li><a href="build-targets.html">Build targets & boot</a></li><li><a href="data-layer.html" aria-current="page">Data & persistence</a></li><li><a href="services-flows.html">Services, IPC & flows</a></li><li><a href="features.html">Feature modules</a></li><li><a href="assessment.html">Strengths & weaknesses</a></li><li><a href="ai-guide.html">AI working guide</a></li></ol>
+  <div class="toc"><a href="#layers">Layering</a><a href="#datastore">DataStore</a><a href="#basedao">BaseDao</a><a href="#collections">Every collection</a><a href="#models">Domain model essentials</a><a href="#backup">Backup and restore</a><a href="#migrations">Desktop migrations</a></div>
+</nav>
+<main>
+<h1>Data and persistence</h1>
+<p class="lead">All athlete data lives in a single LokiJS in-memory database owned by the Angular app. A persistence adapter flushes it to IndexedDB on desktop or to <code>chrome.storage.local</code> on the extension. Small settings live in three other key-value stores. This page documents every store, the access layers and the backup and migration machinery.</p>
+
+<h2 id="layers">Layering</h2>
+<pre><code>Components
+   │  (inject abstract services)
+   ▼
+Services           ActivityService, AthleteService, UserSettingsService, StreamsService, SyncService ...
+   │  business rules, validation, cross-collection operations
+   ▼
+DAOs (BaseDao&lt;T&gt;)  ActivityDao, StreamsDao, AthleteDao, UserSettingsDao, ...  one per collection
+   │  CollectionDef + default value, thin query helpers
+   ▼
+DataStore&lt;T&gt;       abstract; resolves collections, CRUD, persist(), reload(), dbEvent$
+   │
+   ├── DesktopDataStore    adapter: LokiIncrementalIndexedAdapter  (IndexedDB, chunked, incremental)
+   ├── ExtensionDataStore  adapter: LokiChromeAdapter (in the same file) → chrome.storage.local
+   └── TestingDataStore    adapter: Loki.LokiMemoryAdapter (specs)</code></pre>
+
+<h2 id="datastore">DataStore</h2>
+<p>File: <code>src/app/shared/data-store/data-store.ts</code>. Key behaviours:</p>
+<ul>
+  <li><strong>Single database</strong> named <code>elevate</code>, created in the abstract constructor through <code>initDatabase()</code>. Options: <code>autoload: true</code>, <code>autosave: false</code>, <code>throttledSaves: true</code>, <code>env: "BROWSER"</code>.</li>
+  <li><strong>Load signal</strong>: <code>dbEvent$</code> is a <code>ReplaySubject&lt;DbEvent&gt;</code>. The autoload callback emits <code>LOADED</code>, or errors the subject. <code>SAVED</code> is declared but never emitted.</li>
+  <li><strong>Collection resolution</strong>: <code>resolveCollection(def)</code> caches collections in a map, creates missing ones with the def options, and re-applies <code>indices</code> and <code>unique</code> fields every time the cached collection is dirty.</li>
+  <li><strong>Every write persists the whole database</strong>. <code>insert</code>, <code>update</code>, <code>put</code>, <code>remove*</code> and <code>clear</code> mutate the collection synchronously and then call <code>persist(waitSaveDrained)</code>, which calls <code>db.saveDatabase()</code>. On desktop the incremental adapter only writes dirty chunks. On the extension the adapter serialises every collection to <code>chrome.storage.local</code>.</li>
+  <li><strong>Reads are synchronous wrapped in promises</strong>. <code>find</code>, <code>findOne</code>, <code>getById</code> and <code>count</code> return <code>Promise.resolve(...)</code> of Loki results. Returned documents are live Loki objects: mutating them mutates the in-memory database without persisting.</li>
+  <li><strong>findOne inserts a default</strong>. If no document matches, <code>findOne</code> inserts the DAO default value into memory and returns it, without persisting. Singleton collections (athlete, user settings, sync date time) rely on this to self-initialise.</li>
+  <li><strong>put = upsert</strong> keyed on the first unique field of the collection, or <code>$loki</code> if none. It merges with <code>_.assign</code> into the existing doc.</li>
+  <li><strong>Id field</strong>: <code>getById</code>, <code>removeById</code> and <code>put</code> use <code>collection.uniqueNames[0]</code>. Collections without a unique field fall back to the internal <code>$loki</code> id.</li>
+  <li><strong>Debug globals</strong>: after load, <code>window.db</code> is set in all builds, and <code>window.data</code> (raw collection arrays) in non-production builds.</li>
+  <li><strong>Backup compatibility</strong>: static <code>isBackupCompatible(version)</code> compares with <code>environment.minBackupVersion</code> through semver.</li>
+  <li><strong>Cleaning</strong>: static <code>cleanDbObject</code> and <code>cleanDbCollection</code> delete the <code>$loki</code> and <code>meta</code> fields before export. They mutate their argument.</li>
+</ul>
+
+<h3>The two production adapters</h3>
+<div class="two">
+  <div class="pro" style="border-color:var(--border)">
+    <h3 style="color:var(--accent)">Desktop: IndexedDB incremental</h3>
+    <ul>
+      <li><code>lokijs/src/incremental-indexeddb-adapter</code>.</li>
+      <li>Splits collections into chunks and writes only changed chunks.</li>
+      <li>Quota comes from <code>navigator.storage.estimate()</code>, effectively large.</li>
+      <li>Data lives in the Electron renderer profile (user data folder). Main process has no direct access.</li>
+    </ul>
+  </div>
+  <div class="pro" style="border-color:var(--border)">
+    <h3 style="color:var(--info)">Extension: <code>LokiChromeAdapter</code></h3>
+    <ul>
+      <li>Defined inline in <code>extension-data-store.service.ts</code>.</li>
+      <li>Save parses the full JSON dump and writes one storage key per collection name.</li>
+      <li>Load reads all keys and rebuilds a database object. Any non-collection key in storage would be treated as a collection.</li>
+      <li><code>resolveCollection</code> is overridden to call <code>flushChanges()</code> every time.</li>
+      <li>Usage is reported against <code>chrome.storage.local.QUOTA_BYTES</code>. The manifest requests <code>unlimitedStorage</code>, so the real limit is disk space.</li>
+      <li>The <code>webextension</code> scripts write to the same storage. They notify the app with <code>ON_EXTERNAL_DB_CHANGE</code>, which triggers <code>dataStore.reload()</code>.</li>
+    </ul>
+  </div>
+</div>
+
+<h2 id="basedao">BaseDao</h2>
+<p>File: <code>src/app/shared/dao/base.dao.ts</code>. Subclasses implement <code>getCollectionDef()</code> and <code>getDefaultStorageValue()</code>. The constructor calls <code>init()</code>, which throws if no collection def is returned. Every method delegates to the <code>DataStore</code> with the DAO's collection def. Writes default to <code>waitSaveDrained = false</code>. <code>removeMany</code> throws <code>NotImplementedException</code>. <code>chain()</code> exposes a raw Loki <code>Resultset</code> for advanced queries (used by <code>ActivityService.countByType</code> with <code>mapReduce</code>).</p>
+
+<h2 id="collections">Every collection</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Collection</th><th>DAO</th><th>Shape</th><th>Unique / indices</th><th>Default</th><th>Target</th></tr></thead>
+<tbody>
+<tr><td><code>activities</code></td><td><code>ActivityDao</code></td><td><code>Activity[]</code></td><td>unique <code>id</code>; indices <code>name</code>, <code>startTime</code>, <code>type</code></td><td><code>[]</code></td><td><span class="tag both">both</span></td></tr>
+<tr><td><code>streams</code></td><td><code>StreamsDao</code></td><td><code>DeflatedActivityStreams[]</code> = <code>{ activityId, deflatedStreams }</code></td><td>unique <code>activityId</code></td><td><code>[]</code></td><td><span class="tag both">both</span> populated by desktop sync</td></tr>
+<tr><td><code>athlete</code></td><td><code>AthleteDao</code></td><td>singleton <code>AthleteModel</code></td><td>none (<code>$loki</code>)</td><td><code>AthleteModel.DEFAULT_MODEL</code></td><td><span class="tag both">both</span></td></tr>
+<tr><td><code>userSettings</code></td><td><code>UserSettingsDao</code></td><td>singleton <code>DesktopUserSettings</code> or <code>ExtensionUserSettings</code></td><td>none</td><td><code>UserSettings.getDefaultsByBuildTarget()</code></td><td><span class="tag both">both</span></td></tr>
+<tr><td><code>connectorSyncDateTime</code></td><td><code>ConnectorSyncDateTimeDao</code></td><td><code>{ connectorType, syncDateTime }[]</code></td><td>unique <code>connectorType</code></td><td><code>[]</code></td><td><span class="tag desk">desktop</span></td></tr>
+<tr><td><code>stravaConnectorInfo</code></td><td><code>StravaConnectorInfoDao</code></td><td>singleton: Strava client id and secret, access and refresh tokens, expiry, athlete account</td><td>none</td><td><code>StravaConnectorInfo.DEFAULT_MODEL</code></td><td><span class="tag desk">desktop</span></td></tr>
+<tr><td><code>properties</code></td><td><code>PropertiesDao</code></td><td>singleton <code>PropertiesModel</code></td><td>none</td><td>default model</td><td><span class="tag desk">desktop</span></td></tr>
+<tr><td><code>syncDateTime</code></td><td><code>SyncDateTimeDao</code></td><td>singleton <code>{ syncDateTime }</code></td><td>none</td><td><code>new SyncDateTime(null)</code></td><td><span class="tag ext">extension</span></td></tr>
+<tr><td><code>yearProgressPresets</code></td><td><code>YearProgressPresetDao</code> (feature-scoped, in <code>year-progress/shared/dao</code>)</td><td>saved year-progress views</td><td>unique <code>id</code></td><td><code>[]</code></td><td><span class="tag both">both</span></td></tr>
+</tbody></table></div>
+
+<h3>Key-value stores outside LokiJS</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Store</th><th>Keys</th><th>Owner</th><th>Why it is separate</th></tr></thead>
+<tbody>
+<tr><td><code>localStorage</code></td><td><code>theme</code>, <code>app_sideNavOpened</code>, <code>machineToken</code> (JWT), <code>FILE_CONNECTOR_INFO</code>, <code>activitiesTable.selectedColumns</code>, 6 fitness trend keys and 7 year progress keys (config, selected years, rolling period, target...), <code>DEBUG_EST_VS_REAL_WATTS</code></td><td>Various components and services</td><td>UI preferences, and file connector config so it survives a database wipe. The JWT is here too.</td></tr>
+<tr><td>IPC storage (<code>ipc.storage.json</code> in the user data folder, owned by main)</td><td><code>version</code> (installed version), <code>recalculateRequestedBy</code>, <code>config.update.acceptPreReleases</code>, <code>config.update.checkIntervalSec</code></td><td><code>IpcStorageService</code> through <code>Channel.ipcStorage</code></td><td>Must survive a renderer storage reset and be readable before the database loads.</td></tr>
+<tr><td><code>chrome.storage.local</code> (extension)</td><td>One key per Loki collection, plus anything the extension scripts store</td><td><code>LokiChromeAdapter</code> and <code>webextension/</code></td><td>Shared with content scripts on strava.com.</td></tr>
+</tbody></table></div>
+
+<h2 id="models">Domain model essentials</h2>
+<p>Shared models live in <code>modules/shared/models</code> and are used by appcore, desktop main and the extension.</p>
+<ul>
+  <li><strong>Activity</strong> (<code>models/sync/activity.model.ts</code>) extends <code>BareActivity</code> (id, name, type, start and end times and timestamps, manual, trainer, hasPowerMeter, commute...). It adds <code>athleteSnapshot</code>, <code>stats: ActivityStats</code> (speed, pace, power, heart rate, cadence, grade, elevation, dynamics, stress scores), <code>srcStats</code> (values reported by the source), <code>laps</code>, <code>connector</code>, <code>hash</code>, <code>settingsLack</code>, <code>flags</code>, <code>extras</code>, audit times. Static helpers classify sports (<code>isRide</code>, <code>isRun</code>, <code>isSwim</code>, <code>isPaced</code>...).</li>
+  <li><strong>Timestamps</strong>: <code>startTime</code> and <code>endTime</code> are ISO strings. <code>startTimestamp</code> and <code>endTimestamp</code> are <strong>seconds</strong>, not milliseconds. Sync date times are milliseconds. Code converts with <code>/ 1000</code> and <code>* 1000</code> in several places.</li>
+  <li><strong>Streams</strong> (<code>models/activity-data/streams.model.ts</code>): arrays per sensor. <code>Streams.deflate()</code> and <code>Streams.inflate()</code> use lz-string base64 over JSON. <code>StreamProcessor.handle(mode, params, streams)</code> prepares streams for compute or display.</li>
+  <li><strong>AthleteModel</strong>: gender, names, birth date, practice level, sports, <code>datedAthleteSettings[]</code>. Invariant: exactly one entry has <code>since: null</code>, and no two entries share a <code>since</code>. <code>AthleteService.validate()</code> enforces it.</li>
+  <li><strong>AthleteSnapshot</strong>: gender, age at activity date, resolved <code>AthleteSettings</code>. <code>equals()</code> compares max and rest HR, FTPs, LTHRs, weight, swim FTP, age and gender.</li>
+  <li><strong>AthleteSnapshotResolver</strong> (<code>resolvers/athlete-snapshot.resolver.ts</code>): sorts dated settings newest first and returns the first whose <code>since</code> is on or before the activity date, the forever entry being the floor.</li>
+  <li><strong>UserSettings</strong> (<code>models/user-settings/user-settings.namespace.ts</code>): <code>BaseUserSettings</code> (units, warnings, zones) plus <code>DesktopUserSettings</code> (map type and token) or <code>ExtensionUserSettings</code> (about 40 strava.com display toggles, <code>localStorageMustBeCleared</code>).</li>
+  <li><strong>Zones</strong>: <code>UserZonesModel</code> serialises zone arrays per metric. <code>ZoneDefinitionModel</code> describes the editable metric.</li>
+</ul>
+
+<h2 id="backup">Backup and restore</h2>
+<h3>Desktop (<code>desktop/backup/desktop-backup.service.ts</code>)</h3>
+<pre><code>backup(outputDirectory, version) → Subject&lt;BackupEvent&gt;
+  1. pick non-empty collections from desktopDataStore.db.collections
+  2. IPC send backupInit(targetPath)            main opens a gzip writer, file "&lt;date&gt;-v&lt;version&gt;.elv"
+  3. writeObject(metadata {version,totalDocs})
+  4. for each collection, chunks of 10 docs:
+       clean $loki/meta on a deep clone → IPC send backupWriteObj(chunk, isLast)
+       emit progress
+  5. emit {file: path} then complete
+
+restore(path) → Subject&lt;RestoreEvent&gt;
+  1. listen Channel.restoreReadObj  (main pushes one object at a time)
+  2. IPC send restoreInit(path)
+  3. index 0 must be metadata; check isBackupCompatible(version)
+  4. on first chunk: wipe ALL in-memory collections (findAndRemove + clear indices)
+  5. insert each chunk into its collection (created if missing)
+  6. when restoredDocs === metadata.totalDocs:
+       persist(true) → complete → setExistingVersion(backup version)
+  then DesktopSyncService.restore(): clear recalculation flag, persist, location.reload()
+  → on reload, migrations run from the backup version to the current one</code></pre>
+<p>Setting the installed version to the backup version is what makes old backups forward-compatible: the normal migration pipeline upgrades them on the next start.</p>
+<h3>Extension (<code>ExtensionSyncService</code>)</h3>
+<p><code>backup()</code> builds a JSON file <code>&lt;date&gt;_v&lt;version&gt;.history.json</code> with <code>syncDateTime</code>, all activities and the athlete model, and saves it with <code>file-saver</code>. Streams and user settings are not included. <code>restore()</code> validates version and non-empty activities, clears activities, streams, sync time and athlete, then inserts the backup and flags <code>localStorageMustBeCleared</code>.</p>
+
+<h2 id="migrations">Desktop migrations</h2>
+<p>Files: <code>desktop/migration/desktop-migration.service.ts</code>, <code>desktop-registered-migrations.ts</code>, one folder per migration (<code>upgrade_7_0_0-beta.3</code>, <code>upgrade_7_0_0-beta.5</code>, <code>upgrade_7_2_0</code>).</p>
+<pre><code>upgrade()
+  existing = ipcStorage["version"], package = AppPackage.getVersion()
+  ├─ no existing         → firstInstall = true
+  ├─ existing == package → nothing
+  ├─ existing &lt; package  → applyUpgrades(existing, package)
+  │     for migration in DesktopRegisteredMigrations.LIST (ordered, oldest first):
+  │        if semver.lt(existing, migration.version): await migration.upgrade(db, injector)
+  │        if migration.requiresRecalculation: remember its version
+  │     if any requires recalculation AND activities exist: ipcStorage["recalculateRequestedBy"] = version
+  │     persist(true)
+  ├─ existing &gt; package  → reject {reason: "DOWNGRADE"} → dialog, continue
+  └─ finally ipcStorage["version"] = package
+DesktopAppService.init() later reads recalculateRequestedBy and runs recalculateAll().</code></pre>
+<p>A migration extends <code>DesktopMigration</code> and receives the raw <code>LokiConstructor</code> and the Angular <code>Injector</code>. It can mutate collections directly or resolve services. <code>7.2.0</code> is an example of a migration that only requests recalculation. The extension has no equivalent migration framework.</p>
+
+<div class="callout warn">
+  <span class="label">Migration caveats</span>
+  <ul>
+    <li>Migrations are not bounded by the target version, only by the source version. Every registered migration newer than the installed version runs, including ones above the package version if the list is ahead.</li>
+    <li>No rollback. If migration N fails, earlier ones have mutated memory. The version is not updated, so they run again on next start: migrations must be idempotent.</li>
+    <li>Migrations operate on untyped Loki collections, so a model rename is not caught by the compiler.</li>
+  </ul>
+</div>
+
+</main>
+</div>
+</body>
+</html>

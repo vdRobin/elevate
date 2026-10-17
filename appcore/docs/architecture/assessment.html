@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture Assessment</title>
+<meta name="description" content="Strengths, weaknesses, defects, security risks and roadmap for appcore.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="layout">
+<nav class="side" aria-label="Documentation">
+  <div class="brand">Elevate <span>appcore</span></div>
+  <div class="sub">Architecture documentation · v7.2.2</div>
+  <ol><li><a href="index.html">Overview</a></li><li><a href="build-targets.html">Build targets & boot</a></li><li><a href="data-layer.html">Data & persistence</a></li><li><a href="services-flows.html">Services, IPC & flows</a></li><li><a href="features.html">Feature modules</a></li><li><a href="assessment.html" aria-current="page">Strengths & weaknesses</a></li><li><a href="ai-guide.html">AI working guide</a></li></ol>
+  <div class="toc"><a href="#verdict">Verdict</a><a href="#defects">Defects found in code</a><a href="#security">Security and privacy</a><a href="#scalability">Performance and scalability</a><a href="#debt">Technical debt</a><a href="#roadmap">Prioritised roadmap</a></div>
+</nav>
+<main>
+<h1>Strengths and weaknesses</h1>
+<p class="lead">An assessment of appcore's architecture and code health. Defects below were found by reading the code at commit <code>df9e2ceb</code>; dependencies were not installed, so none were reproduced at runtime. Each one names the file and line so it can be checked.</p>
+
+<h2 id="verdict">Verdict</h2>
+<p>Appcore is a feature-rich, well-intentioned codebase with a clear core idea: one Angular app, two hosts, swapped at compile time through dependency injection. The domain modelling (dated athlete settings, snapshots, recalculation) is thoughtful. The weak points are durability and concurrency around the single in-memory database, an ageing toolchain several Angular majors behind, loose typing, uneven tests, and some privacy and HTML-injection exposure on desktop.</p>
+
+<div class="two">
+  <div class="pro">
+    <h3>Strengths</h3>
+    <ul>
+      <li><strong>Clean target abstraction.</strong> Abstract services as DI tokens plus three file replacements give two products from one tree. The other target's code is excluded from each bundle.</li>
+      <li><strong>Layered persistence.</strong> Components, services, DAOs, <code>DataStore</code>, adapter. Swapping storage per target or for tests is a one-class change.</li>
+      <li><strong>Shared domain library.</strong> <code>@elevate/shared</code> is compiled into renderer, Electron main and the extension, so models, sync events and the compute engine cannot drift.</li>
+      <li><strong>Typed IPC vocabulary.</strong> One <code>Channel</code> enum and one <code>IpcTunnel</code> class for both sides.</li>
+      <li><strong>Reproducible analytics.</strong> Dated athlete settings frozen into each activity as a snapshot make results reproducible and let the app detect stale computations.</li>
+      <li><strong>Upgrade path.</strong> Ordered migrations, a "recalculation requested" flag, and restored backups re-entering the migration pipeline.</li>
+      <li><strong>Local-first.</strong> Activity data stays on the machine. The app works offline apart from maps, fonts and help.</li>
+      <li><strong>Streams stored apart.</strong> Heavy per-second data is lz-string compressed in its own collection, so activity lists stay light.</li>
+      <li><strong>User-facing error taxonomy.</strong> <code>WarningException</code> with optional action gives consistent friendly messages through one global handler.</li>
+      <li><strong>Lazy routes</strong> for every feature, and lint plus Prettier plus git hooks.</li>
+    </ul>
+  </div>
+  <div class="con">
+    <h3>Weaknesses</h3>
+    <ul>
+      <li><strong>Database durability.</strong> Whole-database saves after every write, live mutable documents returned from reads, no transactions, and destructive non-atomic restores.</li>
+      <li><strong>Inverted sync topology.</strong> The database lives in the renderer while connectors run in main, so every candidate activity costs IPC round trips and the window must stay open.</li>
+      <li><strong>Concurrency by booleans.</strong> Recalculation and sync locks are plain flags that are not reset on failure.</li>
+      <li><strong>Outdated stack.</strong> Angular 14 (end of life since November 2023), flex-layout (deprecated), Moment, <code>ComponentFactoryResolver</code>, <code>toPromise()</code>, <code>ngcc</code>.</li>
+      <li><strong>Loose typing.</strong> <code>strict: false</code>, positional <code>any[]</code> IPC payloads, untyped Loki collections in migrations.</li>
+      <li><strong>Uneven tests.</strong> No specs for activities, connectors, advanced menus; one for the 5,600-line activity view; the extension DI graph barely exercised; the shared compute library is not run by appcore's Jest.</li>
+      <li><strong>Privacy exposure.</strong> Full athlete model sent to the backend every 5 minutes; names, OS username and hostname attached to Sentry events.</li>
+      <li><strong>HTML injection surface.</strong> Error stacks are injected as trusted HTML in dialogs.</li>
+      <li><strong>Promise-chain style.</strong> Deep <code>.then()</code> chains with missing <code>catch</code>, the promise-constructor anti-pattern, and almost no <code>async/await</code>.</li>
+      <li><strong>Dual wiring.</strong> Each target needs a boot module and a target module, plus template branching, so adding a cross-target service touches several files.</li>
+    </ul>
+  </div>
+</div>
+
+<h2 id="defects">Defects found in code</h2>
+<p>Severity reflects user impact if the path is hit. "Likely" means the reading is strong but should be confirmed at runtime.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>#</th><th>Severity</th><th>Location</th><th>Defect</th><th>Failure scenario</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><span class="tag high">high</span></td><td class="wrap"><code>shared/services/activity/impl/desktop-activity.service.ts:122</code> and <code>:163</code></td><td><code>isRecalculating</code> is set to true and only reset on success. The <code>catch</code> at lines 150 and 194 does not reset it.</td><td>One activity fails to compute (bad streams, IPC error). Every later recalculation is rejected with "job already running" until restart. <code>recalculate$</code> never emits <code>ended</code>, so <code>isSyncing$</code> stays true and sync actions stay disabled.</td></tr>
+<tr><td>2</td><td><span class="tag high">high</span></td><td class="wrap"><code>desktop/backup/desktop-backup.service.ts:199</code> and <code>:221</code></td><td>Restore wipes every in-memory collection on the first chunk and only completes when the count equals <code>metadata.totalDocs</code>. The <code>ended</code> signal is acknowledged but ignored.</td><td>A corrupt or truncated backup, or a count mismatch, leaves the database partially restored and the restore subject never completes. Any later write persists the partial state, losing the user's previous data.</td></tr>
+<tr><td>3</td><td><span class="tag high">high</span></td><td class="wrap"><code>shared/services/sync/impl/extension-sync.service.ts:191</code></td><td>Extension restore deletes activities, streams, sync time and athlete before inserting the backup. <code>validateInsert</code> on the athlete model can reject after the wipe.</td><td>A backup with an invalid athlete model (for example duplicate dated settings) leaves the user with an empty database.</td></tr>
+<tr><td>4</td><td><span class="tag med">likely</span></td><td class="wrap"><code>shared/data-store/data-store.ts</code> <code>resolveCollection</code>, and <code>impl/extension-data-store.service.ts</code></td><td>Collections are cached in <code>COLLECTIONS_MAP</code> and reused while not dirty. The extension store calls <code>flushChanges()</code> on every resolve, so cached entries are never dirty. <code>reload()</code> makes Loki create new collection objects, which the cache never sees.</td><td>After <code>ON_EXTERNAL_DB_CHANGE</code>, collections already used keep serving pre-reload data until the page reloads.</td></tr>
+<tr><td>5</td><td><span class="tag med">med</span></td><td class="wrap"><code>app-load/extension/extension-load.service.ts</code></td><td>The extension waits a fixed 750 ms and ignores the database <code>LOADED</code> event.</td><td>With a large <code>chrome.storage.local</code>, components query before autoload finishes. They see no activities, and with defect 4 an empty collection created early can stay cached after load.</td></tr>
+<tr><td>6</td><td><span class="tag med">med</span></td><td class="wrap"><code>shared/services/sync/impl/desktop-sync.service.ts:59</code></td><td>Strava fast-sync start date dereferences <code>findMostRecent()</code> without a null check.</td><td>Fast sync with an empty database throws a <code>TypeError</code> instead of falling back to a full sync.</td></tr>
+<tr><td>7</td><td><span class="tag med">med</span></td><td class="wrap"><code>desktop-sync.service.ts:326</code></td><td><code>handleSyncCompleteEvents</code> has no <code>catch</code>.</td><td>If saving the sync time or persisting fails, <code>isSyncing$</code> never returns to false and the complete event is never forwarded. The UI stays in syncing state.</td></tr>
+<tr><td>8</td><td><span class="tag med">med</span></td><td class="wrap"><code>desktop/backup/desktop-backup.service.ts:59</code></td><td>Backup promise chain has no error handling.</td><td>Disk full or permission errors in main leave the progress subject open forever and the dialog spinning.</td></tr>
+<tr><td>9</td><td><span class="tag med">likely</span></td><td class="wrap"><code>shared/dao/athlete/athlete.dao.ts</code>, <code>strava-connector-info.dao.ts</code></td><td>Default values are shared static objects (<code>AthleteModel.DEFAULT_MODEL</code>, <code>StravaConnectorInfo.DEFAULT_MODEL</code>). <code>findOne</code> inserts them by reference, and Loki stamps <code>$loki</code> and <code>meta</code> on them.</td><td>After a clear, a second default insert in the same session hits Loki's "Document is already in collection" error, and edits to the stored doc leak into the static default.</td></tr>
+<tr><td>10</td><td><span class="tag med">med</span></td><td class="wrap"><code>modules/shared/resolvers/athlete-snapshot.resolver.ts:17</code></td><td>The resolver sorts <code>datedAthleteSettings</code> in place on the model it receives, including the static default.</td><td>Callers that keep the athlete model see its order change as a side effect. Combined with defect 9 this mutates the global default.</td></tr>
+<tr><td>11</td><td><span class="tag med">med</span></td><td class="wrap"><code>modules/shared/electron/ipc-tunnel.ts:71</code></td><td>Main-to-renderer <code>send</code> waits for the next message on <code>&lt;channel&gt;-response</code> with no correlation id.</td><td>Two concurrent <code>findActivity</code> or <code>findStreams</code> requests (for example parallel connector work) can resolve with each other's data.</td></tr>
+<tr><td>12</td><td><span class="tag low">low</span></td><td class="wrap"><code>desktop-sync.service.ts:419</code></td><td>Upsert failure event is always tagged <code>ConnectorType.STRAVA</code>.</td><td>File connector database errors are reported as Strava errors.</td></tr>
+<tr><td>13</td><td><span class="tag low">low</span></td><td class="wrap"><code>desktop/migration/desktop-migration.service.ts:96</code> and <code>:100</code></td><td>Duplicate <code>semver.eq</code> branch; the second is dead code. Migrations are not capped at the target version.</td><td>Confusing to maintain. A migration registered ahead of the package version would run early.</td></tr>
+<tr><td>14</td><td><span class="tag low">low</span></td><td class="wrap"><code>errors-handler/elevate-error-handler.ts:32</code> and <code>:77</code></td><td><code>error.message</code> is read before the null check, and the fallback branch reads <code>error.stack</code> of a falsy value.</td><td>A <code>null</code> or <code>undefined</code> rejection crashes the error handler itself.</td></tr>
+<tr><td>15</td><td><span class="tag low">low</span></td><td class="wrap"><code>fitness-trend/shared/services/fitness.service.ts:29</code></td><td>Promise constructor wrapping another promise; <code>reject()</code> calls without <code>return</code>; no <code>catch</code> on the inner fetch.</td><td>Work continues after rejecting, and a failing fetch leaves the outer promise pending forever, so the fitness page spins.</td></tr>
+<tr><td>16</td><td><span class="tag low">low</span></td><td class="wrap"><code>desktop/machine/machine.service.ts</code> <code>auth()</code>, <code>machine-authenticated.service.ts:26</code></td><td><code>auth()</code> never errors its subject if credentials lookup fails, and 401 and 403 retries are unbounded.</td><td>Hanging requests when main is unavailable. A backend that keeps answering 401 triggers repeated authenticate-and-replay cycles.</td></tr>
+<tr><td>17</td><td><span class="tag low">low</span></td><td class="wrap"><code>modules/shared/models/athlete/athlete-snapshot.model.ts:15</code></td><td>The variable named <code>isSame</code> actually holds "is different", and the comparison dereferences <code>lthr</code> without a guard.</td><td>Easy to break when edited. Throws on snapshots missing <code>lthr</code>, such as very old data.</td></tr>
+</tbody></table></div>
+
+<h2 id="security">Security and privacy</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Severity</th><th>Topic</th><th>Detail</th><th>Suggested fix</th></tr></thead>
+<tbody>
+<tr><td><span class="tag high">high</span></td><td>HTML injection in error dialogs</td><td><code>desktop-elevate-error-handler.ts:81</code> and <code>extension-elevate-error-handler.ts:34</code> place <code>error.stack</code> into dialog content, which <code>ConfirmDialogComponent</code> and <code>GotItDialogComponent</code> mark trusted with <code>bypassSecurityTrustHtml</code>. Error messages can embed data from activity files, Strava responses or sync events (for example <code>JSON.stringify(syncEvent)</code>). An attribute such as <code>onerror</code> would execute in the renderer, which has <code>window.api</code>. The preload bridge forwards <code>invoke</code> for any channel name with no allowlist, so injected script could call <code>resetApp</code>, <code>ipcStorage</code> or <code>openExternal</code>.</td><td>Escape the stack (text node or <code>&lt;pre&gt;{{ }}&lt;/pre&gt;</code>). Restrict <code>bypassSecurityTrustHtml</code> to static strings. Add a Content Security Policy to <code>index.html</code>.</td></tr>
+<tr><td><span class="tag med">med</span></td><td>Personal data in telemetry</td><td>Check-in sends the full <code>AthleteModel</code> (names, birth date, physiology) every 5 minutes. Sentry context includes first and last name, OS username and hostname.</td><td>Send only what the backend needs. Drop names and OS identifiers from Sentry. Document and offer an opt-out.</td></tr>
+<tr><td><span class="tag med">med</span></td><td>Secrets at rest</td><td>Strava client secret, access and refresh tokens sit unencrypted in IndexedDB. The backend JWT is in <code>localStorage</code>.</td><td>Move secrets to main with Electron <code>safeStorage</code> and keep only opaque handles in the renderer.</td></tr>
+<tr><td><span class="tag low">low</span></td><td>Bundled tokens</td><td><code>map-token.service.ts:17</code> holds base64-encoded Mapbox public tokens. Base64 is not protection.</td><td>Acceptable for public tokens if scoped by URL; otherwise serve only from the backend.</td></tr>
+<tr><td><span class="tag low">low</span></td><td>Token scope</td><td><code>MachineService.authenticateRequest</code> matches the URL path with a regex, not the backend host.</td><td>Match on <code>environment.backendBaseUrl</code> prefix.</td></tr>
+<tr><td><span class="tag low">low</span></td><td>Debug global</td><td><code>window.db</code> is assigned in production builds (<code>data-store.ts:309</code>).</td><td>Gate it on <code>!environment.production</code> like <code>window.data</code>.</td></tr>
+<tr><td><span class="tag low">low</span></td><td>Remote fonts</td><td><code>index.html</code> loads Material Icons and Roboto from Google Fonts.</td><td>Bundle fonts locally for privacy and offline use.</td></tr>
+</tbody></table></div>
+<div class="callout good"><span class="label">Good</span><p>The Electron window uses <code>contextIsolation: true</code>, <code>nodeIntegration: false</code> and a preload bridge. markdown-it runs with its default <code>html: false</code>, so release notes and help markdown cannot inject raw HTML.</p></div>
+
+<h2 id="scalability">Performance and scalability</h2>
+<ul>
+  <li><strong>Everything in memory.</strong> All activities and all streams load into the renderer at startup. Memory and startup time grow linearly with history. Streams are the bulk.</li>
+  <li><strong>Save amplification.</strong> Each write calls <code>saveDatabase</code>. Desktop's incremental adapter limits the damage, but the extension adapter re-serialises the whole database to JSON and writes every collection on every write.</li>
+  <li><strong>Full scans.</strong> Consistency checks iterate every activity and run after each sync. <code>findSince</code> filters on <code>startTimestamp</code>, which is not indexed.</li>
+  <li><strong>Sequential recalculation.</strong> One activity at a time over IPC, and the athlete is re-fetched for every activity. Main has workers that could take batches.</li>
+  <li><strong>Change detection.</strong> No <code>OnPush</code> in 92 components, while large tables and charts update on global events.</li>
+  <li><strong>Bundle.</strong> Plotly, D3, MetricsGraphics, Mapbox, Moment, lodash and KaTeX are all present. The extension budget allows a 5 MB initial bundle.</li>
+</ul>
+
+<h2 id="debt">Technical debt</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Area</th><th>Debt</th></tr></thead>
+<tbody>
+<tr><td>Framework</td><td>Angular 14 and Material 14 are end of life. <code>postinstall: ngcc</code> disappears in Angular 16. Legacy <code>relativeLinkResolution</code> in the placeholder router.</td></tr>
+<tr><td>Libraries</td><td><code>@angular/flex-layout</code> deprecated; Moment in maintenance; MetricsGraphics unmaintained and pinned to D3 v6 loaded as a global script.</td></tr>
+<tr><td>RxJS</td><td>15 <code>toPromise()</code> calls (deprecated in RxJS 7). Raw <code>Subject</code>s exposed publicly. Manual unsubscription.</td></tr>
+<tr><td>Typing</td><td><code>strict: false</code>; 53 explicit <code>any</code> outside specs; IPC payloads as positional <code>any[]</code>.</td></tr>
+<tr><td>Testing tooling</td><td>Jest 28 with <code>jest-environment-jsdom</code> 29 and <code>jest-jasmine2</code> 29; Jasmine types and Protractor still installed; e2e target with no tests; coverage reported as HTML only.</td></tr>
+<tr><td>Dead or partial code</td><td>Dashboard and Goals placeholders; <code>BaseDao.removeMany</code> throws; <code>DbEvent.SAVED</code> never emitted; unused <code>defaultStorageValue</code> parameter in <code>DataStore.find</code>; TODOs in <code>error-sync.event.ts</code>.</td></tr>
+<tr><td>Build coupling</td><td><code>DesktopVersionsProvider</code> requires <code>../desktop/build_metadata.json</code>, so a desktop build of appcore depends on a file produced by the desktop project. Desktop dev build has AOT off, so template errors surface only in production builds.</td></tr>
+<tr><td>Docs</td><td>Root README refers to a <code>develop-new</code> branch and Node 15+, while appcore requires Node 16+.</td></tr>
+</tbody></table></div>
+
+<h2 id="roadmap">Prioritised roadmap</h2>
+<ol>
+  <li><strong>Fix data-safety defects.</strong> Reset recalculation locks in <code>finally</code> (defect 1). Make restores stage into a fresh database and swap on success, or back up first (defects 2 and 3). Add <code>catch</code> handlers that release sync state (defects 7 and 8).</li>
+  <li><strong>Close the injection path.</strong> Stop trusting error stacks as HTML and add a CSP.</li>
+  <li><strong>Reduce telemetry payloads.</strong> Strip personal data from check-in and Sentry.</li>
+  <li><strong>Harden the DataStore.</strong> Wait for <code>LOADED</code> on the extension, invalidate the collection cache on reload, clone defaults on insert, and return cloned documents from reads or document that they are live.</li>
+  <li><strong>Add an IPC correlation id</strong> for main-to-renderer requests and typed payload interfaces per channel.</li>
+  <li><strong>Raise the test floor.</strong> Run <code>modules/shared</code> specs, add specs for sync, backup and restore, and run the suite under both target modules.</li>
+  <li><strong>Upgrade incrementally.</strong> Angular 14 to 15 to 16 (drop <code>ngcc</code>), replace flex-layout with CSS, swap <code>toPromise</code> for <code>firstValueFrom</code>, then consider standalone components and <code>inject()</code>.</li>
+  <li><strong>Turn on strictness gradually.</strong> Start with <code>strictNullChecks</code> on <code>modules/shared</code>, the code that runs in three runtimes.</li>
+  <li><strong>Revisit the sync topology.</strong> Move the database, or a read model of it, into main or a worker so sync no longer round-trips to the UI thread.</li>
+</ol>
+
+</main>
+</div>
+</body>
+</html>
