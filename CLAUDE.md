@@ -12,6 +12,8 @@ Mono-repo with three npm projects plus a root wrapper. Each has its own `package
 
 Detailed appcore architecture docs (data layer, flows, IPC channels, known defects, playbooks) live in `appcore/docs/architecture/` — start with `ai-guide.html`.
 
+The plan for the fork (phases, feature tracks, status per item) is in `ROADMAP.md`. Update its status column when an item lands.
+
 This checkout is a clone of the fork (`origin` remote: `vdRobin/elevate`; `upstream` remote: the original `thomaschampagne/elevate`). Several runtime endpoints and identifiers still point at upstream services; see the P0 items in `.claude/skills/elevate-fix-defect/references/defect-catalog.md`.
 
 Project skills in `.claude/skills/`: `elevate-fix-defect` (prioritised defect catalog), `elevate-verify` (`scripts/verify.sh` runs the right checks for changed files), `elevate-garmin-import`, `elevate-maps-gpx`, `elevate-ml-features`, `elevate-ai-assistant`.
