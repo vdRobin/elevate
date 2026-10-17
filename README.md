@@ -32,7 +32,7 @@
     - [Web-extension project](#web-extension-project)
   - [Environments setup](#environments-setup)
     - [Install requirements](#install-requirements)
-    - [Clone the git-flow based project](#clone-the-git-flow-based-project)
+    - [Clone the project](#clone-the-project)
     - [Desktop development environment](#desktop-development-environment)
     - [Web extension development environment](#web-extension-development-environment)
   - [Build with docker](#build-with-docker)
@@ -196,24 +196,19 @@ Contains the web extension behaviour that acts directly on _strava.com_ website.
 
 You will need to install [NodeJS](https://nodejs.org) (v15+) to build both desktop and chrome web extension.
 
-#### Clone the [git-flow](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow) based project
+#### Clone the project
 
 ```bash
-git clone https://github.com/thomaschampagne/elevate.git
+git clone https://github.com/vdRobin/elevate.git
 ```
 
 or
 
 ```bash
-git clone git@github.com:thomaschampagne/elevate.git
+git clone git@github.com:vdRobin/elevate.git
 ```
 
-The new mono-repo including the desktop app and the web extension is on `develop-new` branch at the moment. So checkout/track this branch to build the desktop app:
-
-```bash
-cd ./elevate
-git checkout --track origin/develop-new
-```
+The project follows [trunk-based development](https://trunkbaseddevelopment.com/): `main` is the trunk. Work on a short-lived branch off `main` (`feat/<name>`, `fix/<name>`) and open a pull request against `main`.
 
 Then install npm dependencies:
 
