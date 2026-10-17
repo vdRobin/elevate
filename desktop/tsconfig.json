@@ -12,7 +12,11 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "allowJs": true,
+    "skipLibCheck": true,
     "paths": {
+      "electron": [
+        "./node_modules/electron"
+      ],
       "@elevate/shared/constants/*": [
         "../appcore/modules/shared/constants/*"
       ],
