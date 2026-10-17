@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feature Modules</title>
+<meta name="description" content="Every appcore feature module with its target, size, tests and behaviour.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="layout">
+<nav class="side" aria-label="Documentation">
+  <div class="brand">Elevate <span>appcore</span></div>
+  <div class="sub">Architecture documentation · v7.2.2</div>
+  <ol><li><a href="index.html">Overview</a></li><li><a href="build-targets.html">Build targets & boot</a></li><li><a href="data-layer.html">Data & persistence</a></li><li><a href="services-flows.html">Services, IPC & flows</a></li><li><a href="features.html" aria-current="page">Feature modules</a></li><li><a href="assessment.html">Strengths & weaknesses</a></li><li><a href="ai-guide.html">AI working guide</a></li></ol>
+  <div class="toc"><a href="#inventory">Inventory</a><a href="#activities">Activities</a><a href="#activity-view">Activity view (desktop)</a><a href="#fitness">Fitness trend</a><a href="#year">Year progressions</a><a href="#athlete">Athlete settings</a><a href="#zones">Zones settings</a><a href="#global">Global settings</a><a href="#connectors">Connectors (desktop)</a><a href="#small">Smaller features</a><a href="#patterns">Recurring component patterns</a></div>
+</nav>
+<main>
+<h1>Feature modules</h1>
+<p class="lead">Every routed feature is a lazy NgModule. Most are shared by both targets, and a few are desktop or extension only. Sizes and spec counts help locate complexity and risk.</p>
+
+<h2 id="inventory">Inventory</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Feature (folder)</th><th>Target</th><th>TS lines</th><th>HTML lines</th><th>Specs</th><th>Charting</th></tr></thead>
+<tbody>
+<tr><td><code>desktop/activity-view</code></td><td><span class="tag desk">desktop</span></td><td>5,617</td><td>424</td><td>1</td><td>Plotly, Mapbox</td></tr>
+<tr><td><code>fitness-trend</code></td><td><span class="tag both">both</span></td><td>2,814</td><td>1,089</td><td>10</td><td>MetricsGraphics, D3</td></tr>
+<tr><td><code>year-progress</code></td><td><span class="tag both">both</span></td><td>2,666</td><td>673</td><td>7</td><td>MetricsGraphics, D3</td></tr>
+<tr><td><code>activities</code></td><td><span class="tag both">both</span></td><td>1,781</td><td>173</td><td>0</td><td>none (table)</td></tr>
+<tr><td><code>athlete-settings</code></td><td><span class="tag both">both</span></td><td>955</td><td>598</td><td>5</td><td></td></tr>
+<tr><td><code>zones-settings</code></td><td><span class="tag both">both</span></td><td>888</td><td>218</td><td>4</td><td></td></tr>
+<tr><td><code>global-settings</code></td><td><span class="tag both">both</span></td><td>757</td><td>93</td><td>3</td><td></td></tr>
+<tr><td><code>desktop/connectors</code></td><td><span class="tag desk">desktop</span></td><td>569</td><td>383</td><td>0</td><td></td></tr>
+<tr><td><code>advanced-menu</code></td><td>both, two variants</td><td>507</td><td>inline</td><td>0</td><td></td></tr>
+<tr><td><code>help</code></td><td><span class="tag both">both</span></td><td>188</td><td>43</td><td>1</td><td></td></tr>
+<tr><td><code>releases-notes</code></td><td><span class="tag both">both</span></td><td>134</td><td>16</td><td>2</td><td></td></tr>
+<tr><td><code>extension</code> (download desktop app)</td><td><span class="tag ext">extension</span></td><td>119</td><td>29</td><td>0</td><td></td></tr>
+<tr><td><code>report</code></td><td><span class="tag both">both</span></td><td>95</td><td>35</td><td>1</td><td></td></tr>
+<tr><td><code>donate</code></td><td><span class="tag both">both</span></td><td>43</td><td>31</td><td>1</td><td></td></tr>
+<tr><td><code>desktop/dashboard</code>, <code>desktop/goals</code></td><td><span class="tag desk">desktop</span></td><td>38 each</td><td>7 each</td><td>0</td><td>placeholders</td></tr>
+</tbody></table></div>
+<p>The shared library <code>modules/shared</code> holds the heaviest domain logic. <code>sync/compute/activity-computer.ts</code> alone is 1,523 lines and <code>stream-processor.ts</code> 433 lines. It has a single spec file, and Jest in appcore does not run it because <code>roots</code> is <code>src/</code> only. The desktop project tests part of this code from its side.</p>
+
+<h2 id="activities">Activities</h2>
+<p><code>ActivitiesComponent</code> is a Material table over all activities with paginator, sort, a debounced name search, sport and date filters, column picker by category (definitions in <code>activity-columns.namespace.ts</code>), CSV export with json2csv, and delete. Preferences and selected columns persist in <code>localStorage</code>. Above 35 selected columns it flags degraded performance. Data is loaded in full and filtered client side with <code>MatTableDataSource</code>. It reloads on <code>AppService.historyChanges$</code>. Opening a row goes through <code>OpenResourceResolver.openActivity()</code>, which routes to <code>activity/:id</code> on desktop and opens the Strava page on the extension.</p>
+
+<h2 id="activity-view">Activity view (desktop)</h2>
+<p><code>ActivityViewComponent</code> loads an activity by route id, user settings and display-processed streams (<code>ProcessStreamMode.DISPLAY</code>). Child components:</p>
+<ul>
+  <li><strong>Map</strong> (<code>activity-view-map</code>): Mapbox GL with start, end and move markers, map type from user settings, token from <code>MapTokenService</code>.</li>
+  <li><strong>Graph</strong> (<code>activity-graph-chart.component.ts</code>, 525 lines): Plotly multi-sensor chart. A bound selection publishes a range used by the debug stats and intervals.</li>
+  <li><strong>Summary stats and stats groups</strong>: driven by declarative definitions in <code>shared/models/stats/stats-def.namespace.ts</code> (1,144 lines) and per-sport stat groups (cycling, running, swimming, default).</li>
+  <li><strong>Sensors</strong> (<code>shared/models/sensors</code>): one class per metric with unit conversion and formatting (speed, pace, swim pace, power, heart rate, cadence, grade, elevation, distance, time).</li>
+  <li><strong>Time in zones</strong>, <strong>peaks</strong>, <strong>best splits</strong> (computed in main through <code>computeSplits</code>), <strong>intervals</strong> (laps).</li>
+  <li><strong>Edit dialog</strong>: name, type, trainer, notes. <strong>Flags</strong>: data quality issues with a clear action.</li>
+</ul>
+
+<h2 id="fitness">Fitness trend</h2>
+<p><code>FitnessService</code> implements the impulse-response (Banister) model. <code>prepare()</code> filters activities by date and name patterns, skips types, and attaches the right stress score per activity: TRIMP or HRSS for heart rate, PSS for power (real or estimated, rides with a cycling FTP), RSS for running (running FTP), SSS for swimming (swim FTP). Flags for abnormal per-hour scores exclude a score. <code>generateDailyStress()</code> builds one entry per day including 14 preview days, then <code>computeTrend()</code> produces CTL (fitness), ATL (fatigue) and TSB (form). Configuration (<code>FitnessTrendConfigModel</code>: impulse mode, initial fitness and fatigue, ignore rules, estimated scores allowed) and toggles are in <code>localStorage</code>. UI: inputs, MetricsGraphics graph with D3 overlays, legend, table with CSV export, info and config dialogs, user guide.</p>
+
+<h2 id="year">Year progressions</h2>
+<p><code>YearProgressService</code> computes cumulative per-day totals per year for distance, time, elevation and count, filtered by sport types and commute options, and rolling-window variants. Presets are stored in the <code>yearProgressPresets</code> collection. UI: MetricsGraphics graph, table, overview dialog, preset management dialogs, helper and user guide.</p>
+
+<h2 id="athlete">Athlete settings</h2>
+<p>Profile (gender, names, birth date, practice level, sports) and the dated settings manager. <code>DatedAthleteSettingsManagerComponent</code> lists periods, opens <code>EditDatedAthleteSettingsDialogComponent</code>, and calls <code>AthleteService</code> add, edit, remove or reset. <code>SwimFtpHelperComponent</code> derives swim FTP from a test. Any change makes stored snapshots inconsistent, which triggers the recalculate bar.</p>
+
+<h2 id="zones">Zones settings</h2>
+<p>Edits zone boundaries per metric through <code>ZonesService</code>: add and remove with neighbour adjustment, compliance checks, save, reset, import and export as JSON. On the extension, saving sets <code>localStorageMustBeCleared</code>.</p>
+
+<h2 id="global">Global settings</h2>
+<p><code>GlobalSettingsService</code> declares sections and options (checkbox, list, number) per build target. The component renders them, persists through <code>UserSettingsService.updateOption()</code>, and opens markdown help from <code>assets/option-helpers</code>. Most extension options control strava.com enhancements, so appcore only stores them.</p>
+
+<h2 id="connectors">Connectors (desktop)</h2>
+<ul>
+  <li><strong>Strava</strong>: the user enters their own Strava API client id and secret. <code>StravaConnectorService.authenticate()</code> runs the OAuth link in main (<code>stravaLink</code>) and stores tokens and the account. Options include updating names, types and commutes of existing activities. Disconnect clears credentials.</li>
+  <li><strong>File</strong>: pick a folder; options for sub-directories, archive extraction and deletion, file renaming, sport detection. Stored in <code>localStorage</code>.</li>
+  <li><strong>Garmin Connect</strong>: informational component only.</li>
+</ul>
+<p>Both connector components extend <code>ConnectorsComponent</code>, which handles sync date display and navigation.</p>
+
+<h2 id="small">Smaller features</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Feature</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td>Advanced menu (desktop)</td><td>Reset global, zones or athlete settings; recalculate all; full app reset; restart; view machine id; disk usage.</td></tr>
+<tr><td>Advanced menu (extension)</td><td>Clear plugin cache; reset user and zones settings.</td></tr>
+<tr><td>Help</td><td>FAQ fetched at runtime from the <code>elevate-docs</code> repository on raw.githubusercontent.com (common plus per-target pages), split on <code>## </code> headings, rendered with markdown-it, searchable by keyword.</td></tr>
+<tr><td>Releases notes</td><td>Lists GitHub releases, rendered markdown filtered per target.</td></tr>
+<tr><td>Report</td><td>Links to help, online docs, GitHub issues and Discord.</td></tr>
+<tr><td>Donate</td><td>Static page.</td></tr>
+<tr><td>Download desktop app (extension)</td><td>Promotes the desktop app.</td></tr>
+<tr><td>Shell bars and menus</td><td>Sync bar (progress, errors dialog on desktop), update bar, recalculate bar, sync menu (sync, fast sync, backup, restore, clear), more menu, top bar with window controls on desktop.</td></tr>
+<tr><td>Shared dialogs</td><td><code>ConfirmDialog</code>, <code>GotItDialog</code>, <code>LoadingDialog</code>, <code>AboutDialog</code>, backup and restore dialogs per target, <code>NewInstalledVersionNoticeDialog</code>, <code>ActivitiesSettingsLacksDialog</code>, <code>OptionHelperDialog</code>.</td></tr>
+</tbody></table></div>
+
+<h2 id="patterns">Recurring component patterns</h2>
+<ul>
+  <li>Constructor injection with explicit <code>@Inject(Token)</code>, often typed as the concrete target class.</li>
+  <li>Data loaded in <code>ngOnInit</code> with promise chains; errors rethrown to the global handler, except <code>WarningException</code>.</li>
+  <li>Default change detection everywhere (no <code>OnPush</code>). Charts redraw on <code>WindowService</code> and <code>SideNavService</code> events.</li>
+  <li>Subscriptions stored in fields and released in <code>ngOnDestroy</code>. There is no <code>takeUntil</code> or <code>async</code> pipe pattern.</li>
+  <li>Dialogs opened with <code>MIN_WIDTH</code> and <code>MAX_WIDTH</code> static constants on the dialog class; dialog data typed with a <code>*DataModel</code> class.</li>
+  <li>Target branching in templates through <code>buildTarget === BuildTarget.EXTENSION</code> when a whole component is not worth duplicating.</li>
+</ul>
+
+</main>
+</div>
+</body>
+</html>

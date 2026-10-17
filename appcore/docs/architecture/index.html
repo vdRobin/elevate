@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Appcore Architecture</title>
+<meta name="description" content="Overview of the Elevate appcore Angular application shared by the desktop app and the web extension.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="layout">
+<nav class="side" aria-label="Documentation">
+  <div class="brand">Elevate <span>appcore</span></div>
+  <div class="sub">Architecture documentation · v7.2.2</div>
+  <ol><li><a href="index.html" aria-current="page">Overview</a></li><li><a href="build-targets.html">Build targets & boot</a></li><li><a href="data-layer.html">Data & persistence</a></li><li><a href="services-flows.html">Services, IPC & flows</a></li><li><a href="features.html">Feature modules</a></li><li><a href="assessment.html">Strengths & weaknesses</a></li><li><a href="ai-guide.html">AI working guide</a></li></ol>
+  <div class="toc"><a href="#snapshot">Snapshot</a><a href="#what">What appcore is</a><a href="#stack">Technology stack</a><a href="#map">Source map</a><a href="#pages">Pages in this documentation</a><a href="#glossary">Glossary</a></div>
+</nav>
+<main>
+<h1>Elevate appcore: architecture overview</h1>
+<p class="lead">Appcore is the Angular 14 single-page application that powers both the Elevate desktop app (Electron) and the Elevate web extension for Strava. This set of pages documents how it is built, how data flows through it, and where it is strong or fragile. It is written to be used as working context by engineers and by AI coding assistants.</p>
+
+<div class="callout ai">
+  <span class="label">For AI assistants</span>
+  <p>Read <a href="ai-guide.html">the AI working guide</a> before changing code. The single most important fact: <strong>one source tree compiles into two different apps</strong>. Angular CLI <code>fileReplacements</code> swap the boot module, the target module and the environment file per build. A change that compiles for one target can break the other. Always check both <code>desktop-*</code> and <code>extension-*</code> variants of whatever you touch.</p>
+</div>
+
+<h2 id="snapshot">Snapshot</h2>
+<div class="stats">
+  <div class="stat"><div class="v">7.2.2</div><div class="k">package version</div></div>
+  <div class="stat"><div class="v">Angular 14</div><div class="k">framework (NgModule based)</div></div>
+  <div class="stat"><div class="v">TS 4.8</div><div class="k"><code>strict: false</code></div></div>
+  <div class="stat"><div class="v">513</div><div class="k">TypeScript files (src + modules)</div></div>
+  <div class="stat"><div class="v">92</div><div class="k">components</div></div>
+  <div class="stat"><div class="v">67</div><div class="k">services</div></div>
+  <div class="stat"><div class="v">40</div><div class="k">NgModules</div></div>
+  <div class="stat"><div class="v">65</div><div class="k">spec files (Jest)</div></div>
+</div>
+
+<h2 id="what">What appcore is</h2>
+<p>The repository <code>elevate</code> is a mono-repo with three projects. Appcore is the shared UI and domain layer. The two other projects are thin hosts that embed the compiled appcore bundle.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Project</th><th>Role</th><th>How it uses appcore</th></tr></thead>
+<tbody>
+<tr><td><code>appcore/</code></td><td>Angular SPA and the shared TypeScript library <code>@elevate/shared</code> in <code>appcore/modules/shared</code>.</td><td>It is the product. Built with <code>ng build --configuration=desktop|extension</code>.</td></tr>
+<tr><td><code>desktop/</code></td><td>Electron main process: window management, connectors (Strava API, local FIT/GPX/TCX files), activity computation workers, backups on disk, auto-update.</td><td>Loads the appcore bundle in the renderer window. Talks to it over Electron IPC through a preload bridge exposed as <code>window.api</code>. Imports <code>@elevate/shared</code> through tsconfig path aliases.</td></tr>
+<tr><td><code>webextension/</code></td><td>Manifest V3 Chrome extension that injects extra stats into strava.com and syncs activities by scraping Strava.</td><td>Serves the appcore bundle as its options page (<code>app/index.html</code>). Shares <code>chrome.storage.local</code> with it and sends <code>CoreMessages</code> over <code>chrome.runtime</code> messaging.</td></tr>
+</tbody></table></div>
+
+<figure>
+<svg viewBox="0 0 960 430" role="img" aria-label="System context: appcore runs inside the Electron renderer or the Chrome extension options page">
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs>
+  <!-- Desktop host -->
+  <rect x="20" y="20" width="440" height="390" rx="12" class="box"/>
+  <text x="40" y="46" class="title">Desktop build (Electron)</text>
+  <rect x="40" y="64" width="400" height="150" rx="10" class="box-accent"/>
+  <text x="58" y="90" class="title">Renderer: appcore (desktop config)</text>
+  <text x="58" y="114">Angular UI, services, LokiJS database</text>
+  <text x="58" y="134">Persistence: IndexedDB (incremental adapter)</text>
+  <text x="58" y="154">Owns all activity data</text>
+  <text x="58" y="178" class="small">DesktopBootModule + DesktopTargetModule + environment.desktop*.ts</text>
+  <text x="58" y="196" class="small">Talks to main via window.api (preload bridge)</text>
+  <rect x="40" y="262" width="400" height="128" rx="10" class="box"/>
+  <text x="58" y="288" class="title">Main process: desktop/</text>
+  <text x="58" y="312">Connectors (Strava API, files), compute workers</text>
+  <text x="58" y="332">Backup writer, auto-update, ipc.storage.json</text>
+  <text x="58" y="352" class="small">Imports @elevate/shared (ActivityComputer, models)</text>
+  <path d="M190 214 L190 262" class="edge" marker-end="url(#ah)" marker-start="url(#ah)"/>
+  <text x="200" y="244" class="small">IPC tunnel: invoke / send / receive</text>
+
+  <!-- Extension host -->
+  <rect x="500" y="20" width="440" height="270" rx="12" class="box"/>
+  <text x="520" y="46" class="title">Extension build (Chrome MV3)</text>
+  <rect x="520" y="64" width="400" height="120" rx="10" class="box-info"/>
+  <text x="538" y="90" class="title">Options page: appcore (extension config)</text>
+  <text x="538" y="114">Same Angular source, different DI bindings</text>
+  <text x="538" y="134">Persistence: chrome.storage.local (custom adapter)</text>
+  <text x="538" y="156" class="small">ExtensionBootModule + ExtensionTargetModule</text>
+  <rect x="520" y="206" width="400" height="66" rx="10" class="box"/>
+  <text x="538" y="232" class="title">webextension/ scripts</text>
+  <text x="538" y="254" class="small">background.ts, content scripts on strava.com, sync</text>
+  <path d="M720 184 L720 206" class="edge" marker-end="url(#ah)" marker-start="url(#ah)"/>
+
+  <!-- External -->
+  <rect x="500" y="312" width="440" height="98" rx="12" class="box-good"/>
+  <text x="520" y="338" class="title">External services (desktop only, from the renderer)</text>
+  <text x="520" y="362" class="small">Elevate backend: machine check-in, insights upload, map token</text>
+  <text x="520" y="380" class="small">GitHub API: release notes  ·  Mapbox: map tiles  ·  Sentry: error reports</text>
+  <path d="M440 140 C 470 140, 470 360, 500 360" class="edge-dash" marker-end="url(#ah)"/>
+</svg>
+<figcaption>System context. Appcore is compiled twice, once per host. The two builds share code but not runtime, storage or features.</figcaption>
+</figure>
+
+<h2 id="stack">Technology stack</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Concern</th><th>Choice</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Framework</td><td>Angular 14.3, NgModules, lazy routes</td><td>No standalone components, no signals. Hash-based routing (<code>useHash: true</code>).</td></tr>
+<tr><td>UI kit</td><td>Angular Material 14, <code>@angular/flex-layout</code></td><td>Flex-layout is deprecated upstream. Themes are SCSS (light and dark) applied as a class on <code>body</code>.</td></tr>
+<tr><td>Language</td><td>TypeScript 4.8, target ES2020</td><td><code>strict: false</code>. Decorator metadata on. Explicit <code>@Inject()</code> on every constructor parameter.</td></tr>
+<tr><td>Async</td><td>Promises first, RxJS 7 Subjects for events</td><td>Almost no <code>async/await</code>. Long <code>.then()</code> chains and <code>reduce()</code> to serialise work.</td></tr>
+<tr><td>Database</td><td>LokiJS 1.5 in memory</td><td>Persisted to IndexedDB on desktop and to <code>chrome.storage.local</code> on the extension.</td></tr>
+<tr><td>Charts</td><td>MetricsGraphics + D3 v6, Plotly basic</td><td>MetricsGraphics for fitness trend and year progress. Plotly for the desktop activity view.</td></tr>
+<tr><td>Maps</td><td>Mapbox GL 2</td><td>Desktop activity view only.</td></tr>
+<tr><td>Dates</td><td>Moment.js</td><td>Legacy, heavy, in maintenance mode upstream.</td></tr>
+<tr><td>Utilities</td><td>lodash, lz-string, pako, semver, p-defer, markdown-it, KaTeX</td><td>lz-string compresses activity streams. pako gzips insight uploads.</td></tr>
+<tr><td>Errors</td><td>Custom <code>ErrorHandler</code>, Sentry 7 (desktop prod)</td><td>See <a href="services-flows.html#errors">error handling</a>.</td></tr>
+<tr><td>Tests</td><td>Jest 28 + jest-preset-angular, jasmine2 runner, jsdom</td><td>Specs live under <code>src/</code> only. Protractor e2e config is a leftover.</td></tr>
+<tr><td>Lint/format</td><td>angular-eslint 14, Prettier</td><td>Component prefix <code>app</code>, kebab-case selectors.</td></tr>
+</tbody></table></div>
+
+<h2 id="map">Source map</h2>
+<pre><code>appcore/
+├── angular.json            build configs: extension, extension-prod, desktop, desktop-prod
+├── tsconfig.app.json       path aliases @elevate/shared/* and fs -> modules/browser/null.ts
+├── jest.config.js          Jest roots = src/ only
+├── modules/
+│   ├── browser/null.ts     empty stub so shared code importing "fs" compiles in the browser
+│   └── shared/             @elevate/shared: models, enums, sync events, compute engine, IPC contract
+│       ├── constants/ enums/ exceptions/ models/ resolvers/ tools/
+│       ├── electron/       BridgeApi, Channel enum, IpcMessage, IpcTunnel (used by BOTH renderer and main)
+│       └── sync/           compute/ (ActivityComputer, StreamProcessor...), connectors/, events/
+└── src/
+    ├── main.ts             bootstraps AppModule, sets default theme class
+    ├── environments/       4 files, swapped at build time
+    ├── shared-fixtures/    JSON fixtures for specs
+    └── app/
+        ├── app.module.ts   AppLoadComponent (bootstrap) + AppComponent shell
+        ├── boot/           target-boot.module.ts (placeholder) + desktop-/extension-boot.module.ts
+        ├── core/           CoreModule: Common, Forms, Material, HttpClient, FlexLayout, pipes
+        ├── shared/         SharedModule, DAOs, data-store, services, dialogs, models, routing, target modules
+        ├── app-load/       splash screen + per-target AppLoadService (startup sequence)
+        ├── top-bar/ sync-bar/ sync-menu/ update-bar/ app-more-menu/ recalculate-activities-bar/
+        │                   abstract shell widgets resolved per target through injection tokens
+        ├── activities/ fitness-trend/ year-progress/ athlete-settings/ zones-settings/
+        │   global-settings/ help/ releases-notes/ report/ donate/ advanced-menu/
+        │                   lazy feature modules shared by both targets
+        ├── desktop/        desktop-only: activity-view, connectors, backup, migration, ipc, electron,
+        │                   machine (backend auth), insights, mapbox, app-update, manual-activity
+        └── extension/      extension-only: chromium.service, download-desktop-app page</code></pre>
+
+<h2 id="pages">Pages in this documentation</h2>
+<div class="cards">
+  <a class="card" href="build-targets.html"><h3>Build targets and bootstrapping</h3><p>File replacements, the two DI graphs, the startup sequence, routing and the dynamic shell widgets.</p></a>
+  <a class="card" href="data-layer.html"><h3>Data and persistence</h3><p>LokiJS DataStore, persistence adapters, DAOs, every collection and key-value store, backups and migrations.</p></a>
+  <a class="card" href="services-flows.html"><h3>Services, IPC and flows</h3><p>Service catalog, sync and recalculation flows, the Electron IPC tunnel, backend calls, error handling.</p></a>
+  <a class="card" href="features.html"><h3>Feature modules</h3><p>Every route and module, what it does, which target ships it, its size and test coverage.</p></a>
+  <a class="card" href="assessment.html"><h3>Strengths and weaknesses</h3><p>Architecture assessment, confirmed defects with file and line, risks and a prioritised roadmap.</p></a>
+  <a class="card" href="ai-guide.html"><h3>AI working guide</h3><p>Rules, conventions, playbooks for common changes, pitfalls and verification checklists.</p></a>
+</div>
+
+<h2 id="glossary">Glossary</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Term</th><th>Meaning in this codebase</th></tr></thead>
+<tbody>
+<tr><td>Build target</td><td><code>BuildTarget.DESKTOP</code> or <code>BuildTarget.EXTENSION</code>, read from <code>environment.buildTarget</code>.</td></tr>
+<tr><td>Target module</td><td><code>TargetModule</code>: the per-target service bindings, swapped by file replacement. Imported by <code>SharedModule</code>.</td></tr>
+<tr><td>Boot module</td><td><code>TargetBootModule</code>: the per-target shell components, error handler, load service and app service. Imported by <code>AppModule</code>.</td></tr>
+<tr><td>Activity</td><td>The main entity (<code>modules/shared/models/sync/activity.model.ts</code>). Holds computed stats, laps, flags and the athlete snapshot used to compute it.</td></tr>
+<tr><td>Streams</td><td>Per-second sensor arrays (time, distance, HR, power, lat/lng...). Stored separately, compressed with lz-string as <code>DeflatedActivityStreams</code>.</td></tr>
+<tr><td>Dated athlete settings</td><td>Athlete physiology (max HR, FTPs, weight...) valid from a <code>since</code> date. Exactly one entry has <code>since: null</code> meaning "forever", the oldest fallback.</td></tr>
+<tr><td>Athlete snapshot</td><td>The athlete settings resolved for one activity date, frozen into the activity. Used to detect when activities need recalculation.</td></tr>
+<tr><td>Settings lack</td><td>An activity was computed while a needed threshold (for example FTP) was missing. Flag <code>settingsLack: true</code>.</td></tr>
+<tr><td>Connector</td><td>Desktop activity source: <code>STRAVA</code> (API) or <code>FILE</code> (local folder). Implemented in the desktop main process.</td></tr>
+<tr><td>Recalculation</td><td>Re-running the compute engine on stored activities and streams, through IPC on desktop.</td></tr>
+<tr><td>Insights</td><td>Anonymised activity data the desktop app uploads to the Elevate backend.</td></tr>
+<tr><td>Machine</td><td>The desktop installation identity (id and key) used to authenticate to the Elevate backend.</td></tr>
+</tbody></table></div>
+
+<footer>Generated from a full read of <code>appcore/</code> at commit <code>df9e2ceb</code> on branch <code>develop</code>, package version 7.2.2. Line numbers cited in these pages refer to that commit.</footer>
+
+</main>
+</div>
+</body>
+</html>

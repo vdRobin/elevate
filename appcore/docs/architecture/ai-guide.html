@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Working Guide</title>
+<meta name="description" content="Rules, playbooks, pitfalls and checklists for AI assistants changing appcore.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="layout">
+<nav class="side" aria-label="Documentation">
+  <div class="brand">Elevate <span>appcore</span></div>
+  <div class="sub">Architecture documentation · v7.2.2</div>
+  <ol><li><a href="index.html">Overview</a></li><li><a href="build-targets.html">Build targets & boot</a></li><li><a href="data-layer.html">Data & persistence</a></li><li><a href="services-flows.html">Services, IPC & flows</a></li><li><a href="features.html">Feature modules</a></li><li><a href="assessment.html">Strengths & weaknesses</a></li><li><a href="ai-guide.html" aria-current="page">AI working guide</a></li></ol>
+  <div class="toc"><a href="#rules">Golden rules</a><a href="#where">Where does my code go?</a><a href="#playbooks">Playbooks</a><a href="#pitfalls">Pitfalls</a><a href="#commands">Commands</a><a href="#checklist">Before finishing a change</a><a href="#facts">Machine-readable facts</a></div>
+</nav>
+<main>
+<h1>AI working guide</h1>
+<p class="lead">Instructions for AI coding assistants, and humans, making changes in appcore. Follow the rules, use the playbook that matches the change, and run the checklist before finishing.</p>
+
+<h2 id="rules">Golden rules</h2>
+<ol>
+  <li><strong>Think in two targets.</strong> Every change compiles into the desktop app and the extension. Before editing, find whether a <code>desktop-*</code> and an <code>extension-*</code> variant exist for the file, module, service or component.</li>
+  <li><strong>Inject abstractions.</strong> Depend on <code>ActivityService</code>, <code>SyncService</code>, <code>DataStore</code> and similar abstract tokens. Annotate with a concrete type only in target-specific code.</li>
+  <li><strong>Register providers explicitly.</strong> Services are module-provided. Shared goes to <code>SharedModule</code>, target-specific to <code>desktop-target.module.ts</code> or <code>extension-target.module.ts</code>, shell and lifecycle bindings to <code>boot/desktop-boot.module.ts</code> or <code>boot/extension-boot.module.ts</code>, feature-scoped to the feature module.</li>
+  <li><strong>Never import desktop code from shared code.</strong> Files under <code>src/app/desktop/</code> must only be imported from desktop-target, desktop-boot or other desktop files, otherwise Electron-only services leak into the extension bundle. The reverse applies to <code>src/app/extension/</code>. One shared file already breaks this rule (<code>shared/services/file-connector-info/file-connector-info.service.ts</code> imports <code>ElectronService</code>); it only works because only desktop code injects it. Do not add more.</li>
+  <li><strong>Keep <code>modules/shared</code> runtime-neutral.</strong> It runs in the browser, in Electron main and in the extension. No Angular, no DOM-only APIs without guards, no Node-only APIs (<code>fs</code> resolves to an empty stub in appcore). Import it through the <code>@elevate/shared/...</code> aliases.</li>
+  <li><strong>Treat Loki documents as live.</strong> Objects returned by DAOs are the database's own objects. Clone (<code>_.cloneDeep</code>) before speculative edits, and call <code>update</code> or <code>put</code> to persist.</li>
+  <li><strong>Pass clones of defaults.</strong> Never insert a <code>static DEFAULT_MODEL</code> by reference.</li>
+  <li><strong>Release locks and flags in every path.</strong> Any code that sets <code>isSyncing$</code>, <code>isRecalculating</code> or similar must reset it on failure too.</li>
+  <li><strong>Prefer <code>WarningException</code> for user-facing, expected failures.</strong> The global handler shows it as a snackbar. Throw other errors only for real bugs.</li>
+  <li><strong>Do not render untrusted text as HTML.</strong> Dialog <code>content</code> and <code>title</code> are trusted with <code>bypassSecurityTrustHtml</code>. Escape any dynamic value placed in them.</li>
+  <li><strong>Match existing style.</strong> Prettier (print width 120, double quotes, no trailing commas, <code>arrowParens: avoid</code>), <code>app-</code> selector prefix, explicit <code>@Inject()</code> on constructor params, <code>public</code> and <code>private</code> modifiers spelled out.</li>
+  <li><strong>New code may use <code>async/await</code></strong> but must return <code>Promise</code> like its neighbours. Do not convert unrelated chains while fixing something else.</li>
+</ol>
+
+<h2 id="where">Where does my code go?</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Kind of code</th><th>Location</th></tr></thead>
+<tbody>
+<tr><td>Model, enum, constant or pure function used by desktop main or the extension too</td><td><code>modules/shared/&lt;area&gt;/</code></td></tr>
+<tr><td>Activity computation, stress scores, stream processing</td><td><code>modules/shared/sync/compute/</code> (executed in desktop main for desktop, and by the extension)</td></tr>
+<tr><td>Service used by both targets with the same behaviour</td><td><code>src/app/shared/services/&lt;name&gt;/</code>, provided in <code>SharedModule</code></td></tr>
+<tr><td>Service with per-target behaviour</td><td>Abstract class in <code>src/app/shared/services/&lt;name&gt;/</code>; implementations in <code>desktop/</code> and <code>extension/</code> sub-folders or <code>impl/</code>; bind in each target module</td></tr>
+<tr><td>Desktop-only feature, service or IPC client</td><td><code>src/app/desktop/&lt;area&gt;/</code></td></tr>
+<tr><td>Extension-only feature or chrome API wrapper</td><td><code>src/app/extension/&lt;area&gt;/</code></td></tr>
+<tr><td>New persisted collection</td><td>DAO in <code>src/app/shared/dao/&lt;name&gt;/</code>, or in the feature's <code>shared/dao</code> when feature-scoped</td></tr>
+<tr><td>Routed page</td><td>New folder in <code>src/app/</code> (or <code>src/app/desktop/</code>) with module, routing module and component</td></tr>
+<tr><td>Reusable dialog</td><td><code>src/app/shared/dialogs/</code>, declared in <code>SharedModule</code></td></tr>
+<tr><td>Global settings option</td><td>Model in <code>user-settings.namespace.ts</code>, definition in <code>GlobalSettingsService</code>, help markdown in <code>assets/option-helpers/</code></td></tr>
+</tbody></table></div>
+
+<h2 id="playbooks">Playbooks</h2>
+
+<details open><summary>Add a route and feature module</summary>
+<ol>
+  <li>Add the path to <code>shared/models/app-routes.ts</code>. The name becomes the title through <code>_.startCase</code>.</li>
+  <li>Create <code>&lt;feature&gt;.module.ts</code> importing <code>CoreModule</code> and a <code>&lt;feature&gt;-routing.module.ts</code> with <code>RouterModule.forChild([{ path: "", component }])</code>.</li>
+  <li>Add a lazy route in <code>shared/modules/routing/desktop-routing.module.ts</code> and/or <code>extension-routing.module.ts</code>.</li>
+  <li>Add a menu entry in <code>shared/services/menu-items/impl/desktop-menu-items-provider.service.ts</code> and/or the extension one.</li>
+  <li>If the page needs activities, gate it on <code>SyncState</code> and use <code>&lt;app-activities-required&gt;</code>.</li>
+  <li>Subscribe to <code>AppService.historyChanges$</code> if the page must refresh after syncs, and unsubscribe in <code>ngOnDestroy</code>.</li>
+</ol>
+</details>
+
+<details><summary>Add a target-specific service</summary>
+<ol>
+  <li>Create <code>abstract class FooService</code> with the shared logic and abstract methods, constructor <code>protected</code>.</li>
+  <li>Create <code>DesktopFooService</code> and <code>ExtensionFooService</code> with <code>@Injectable()</code>, repeating every constructor parameter with <code>@Inject()</code>.</li>
+  <li>Bind <code>{ provide: FooService, useClass: DesktopFooService }</code> in <code>desktop-target.module.ts</code>, and the extension equivalent.</li>
+  <li>In specs, import the target module you test (<code>desktop-target.module</code> or <code>extension-target.module</code>) and provide <code>{ provide: DataStore, useClass: TestingDataStore }</code>.</li>
+</ol>
+</details>
+
+<details><summary>Add a persisted collection</summary>
+<ol>
+  <li>Define the model in <code>modules/shared/models</code> if shared, otherwise in <code>src/app/shared/models</code>.</li>
+  <li>Create <code>FooDao extends BaseDao&lt;Foo&gt;</code> with <code>static readonly COLLECTION_DEF = new CollectionDef("foo", { unique: ["id"], indices: [...] })</code>.</li>
+  <li>Return a fresh object or array from <code>getDefaultStorageValue()</code>. Do not return a shared static.</li>
+  <li>Provide the DAO in the right module and wrap it in a service; components should not use DAOs directly.</li>
+  <li>Decide whether backups must include it. Desktop backups include every non-empty collection automatically; the extension backup lists fields explicitly in <code>ExtensionSyncService.prepareForExport()</code>.</li>
+  <li>If existing users need data reshaped, add a desktop migration.</li>
+</ol>
+</details>
+
+<details><summary>Add a desktop migration</summary>
+<ol>
+  <li>Create <code>src/app/desktop/migration/upgrade_X_Y_Z/upgrade_X_Y_Z.ts</code> with <code>export class Upgrade_X_Y_Z extends DesktopMigration</code> (pre-releases use <code>$</code>, for example <code>Upgrade_7_0_0$beta_3</code>).</li>
+  <li>Set <code>version</code> to the release that ships it, a <code>description</code>, and <code>requiresRecalculation</code>.</li>
+  <li>In <code>upgrade(db, injector)</code>, work on <code>db.getCollection("...")</code>, guard for missing collections, make the operation idempotent, then <code>return this.saveDatabase(db)</code>.</li>
+  <li>Append it at the end of <code>DesktopRegisteredMigrations.LIST</code>, which must stay sorted by version.</li>
+  <li>Test it by downgrading <code>version</code> in <code>ipc.storage.json</code> in the user data folder.</li>
+</ol>
+</details>
+
+<details><summary>Add a user setting</summary>
+<ol>
+  <li>Add the field and its default to <code>DesktopUserSettings</code> and/or <code>ExtensionUserSettings</code> (both the class field and <code>DEFAULT_MODEL</code>) in <code>modules/shared/models/user-settings/user-settings.namespace.ts</code>.</li>
+  <li>Add the option definition in <code>GlobalSettingsService</code> for the target.</li>
+  <li>Add <code>assets/option-helpers/&lt;key&gt;.md</code> if it has help.</li>
+  <li>Existing users' stored settings will not have the field. Read it with a fallback, or add a migration on desktop.</li>
+  <li>If the setting changes computed stats, request a recalculation.</li>
+</ol>
+</details>
+
+<details><summary>Add an IPC channel</summary>
+<ol>
+  <li>Add the name to <code>Channel</code> in <code>modules/shared/electron/channels.enum.ts</code>.</li>
+  <li>Renderer to main: call <code>ipcTunnelService.send&lt;IpcMessage, R&gt;(new IpcMessage(Channel.x, ...args))</code> from a desktop service. Implement the handler in <code>desktop/src</code> with the main-side tunnel <code>on()</code>, destructuring the payload array in the same order.</li>
+  <li>Main to renderer: register <code>ipcTunnelService.on(Channel.x, payload =&gt; ...)</code> once, in a singleton service constructor, and return a value or a promise.</li>
+  <li>No preload change is needed: <code>desktop/src/pre-loading/pre-loader.ts</code> exposes a generic <code>invoke(channel, ...args)</code> and <code>receive(channel, listener)</code> with no channel allowlist. Add a typed helper to <code>BridgeApi</code> only for direct shell calls.</li>
+  <li>Do not run concurrent main-to-renderer requests on one channel until a correlation id exists.</li>
+</ol>
+</details>
+
+<details><summary>Change the Activity model or computed stats</summary>
+<ol>
+  <li>Edit <code>modules/shared/models/sync/activity.model.ts</code> and the computation in <code>modules/shared/sync/compute/</code>.</li>
+  <li>Check consumers in three places: appcore (activities columns in <code>activity-columns.namespace.ts</code>, activity view stats in <code>stats-def.namespace.ts</code>, fitness and year progress), <code>desktop/</code>, and <code>webextension/</code>.</li>
+  <li>Stored activities keep the old shape. Add a desktop migration with <code>requiresRecalculation: true</code>, or handle missing fields.</li>
+  <li>Run the desktop project's tests, which cover the compute engine.</li>
+</ol>
+</details>
+
+<details><summary>Add a shell widget variant</summary>
+<p>Follow the existing pattern: an abstract <code>@Component({ template: "" })</code> base plus an <code>InjectionToken</code>, an anchor directive declared in <code>AppModule</code>, a <code>&lt;ng-container appX&gt;</code> in <code>app.component.html</code>, creation in <code>AppComponent.initApp()</code>, and concrete components declared and provided with <code>useValue</code> in both boot modules.</p>
+</details>
+
+<details><summary>Handle a new sync error code (desktop)</summary>
+<ol>
+  <li>Add the static <code>ErrorSyncEvent</code> definition in <code>modules/shared/sync/events/error-sync.event.ts</code>.</li>
+  <li>Classify it in <code>DesktopSyncService.handleErrorSyncEvents()</code> as fatal (forward and stop) or non-fatal (forward). Unclassified codes throw.</li>
+  <li>Display it in <code>DesktopErrorsSyncDetailsDialogComponent</code> if needed.</li>
+</ol>
+</details>
+
+<h2 id="pitfalls">Pitfalls</h2>
+<ul>
+  <li><strong>Timestamps</strong>: <code>startTimestamp</code> is seconds; sync date times and <code>Date.now()</code> are milliseconds.</li>
+  <li><strong><code>findOne</code> inserts</strong>: calling it on an empty singleton collection creates the default document in memory.</li>
+  <li><strong><code>AthleteSnapshotResolverService.resolve()</code> throws</strong> unless <code>update()</code> was awaited first.</li>
+  <li><strong>Placeholder modules</strong>: the IDE and <code>type:check</code> see empty target modules; a missing provider shows only at runtime or in specs that import a real target module.</li>
+  <li><strong>Desktop dev builds are JIT</strong> (<code>aot: false</code>). Build <code>desktop-prod</code> or <code>extension</code> to catch template type errors.</li>
+  <li><strong>Route names are UI labels.</strong> Renaming an <code>AppRoutes</code> value changes titles and menu labels.</li>
+  <li><strong>Extension sync reloads the page</strong> when done, so in-memory state does not survive it.</li>
+  <li><strong>Global scripts</strong>: D3 and MetricsGraphics are loaded as global scripts in <code>angular.json</code>, not imported as modules.</li>
+  <li><strong>Specs run under jsdom</strong> with <code>window.require</code>, <code>localStorage</code> and Mapbox mocked in <code>src/test.ts</code>. <code>chrome.*</code> is not mocked globally.</li>
+  <li><strong>Shared spec files outside <code>src/</code> do not run</strong> in appcore's Jest.</li>
+</ul>
+
+<h2 id="commands">Commands</h2>
+<pre><code># one-time, from the repository root (installs all three projects)
+npm install
+
+# appcore only (run inside appcore/)
+npm test                    # Jest with coverage (HTML report in coverage/)
+npm run type:check          # tsc on app and spec tsconfigs (placeholder target modules)
+npm run lint                # angular-eslint with --fix
+
+# build appcore for a target (inside appcore/)
+npx ng build --configuration=desktop-prod
+npx ng build --configuration=extension-prod
+
+# full builds through the hosts
+cd desktop &amp;&amp; npm start                    # watch appcore + electron into desktop/dist
+cd desktop &amp;&amp; npm run launch:dev:app      # in another terminal
+cd webextension &amp;&amp; npm start              # watch into webextension/dist, load unpacked
+
+# repository root
+npm test                                  # desktop + appcore + webextension tests
+npm run type:check:desktop                # appcore + desktop type checks
+npm run type:check:extension              # appcore + webextension type checks</code></pre>
+
+<h2 id="checklist">Before finishing a change</h2>
+<ol>
+  <li>Did you handle both targets, or confirm the change is single-target and placed under <code>desktop/</code> or <code>extension/</code>?</li>
+  <li>Is every new service registered in a module that both targets (or the right target) import?</li>
+  <li>Do specs pass, and do new specs import the matching target module with <code>TestingDataStore</code>?</li>
+  <li>Does <code>npm run type:check</code> pass, and does a production build of each affected target pass?</li>
+  <li>Do stored documents from older versions still load, or is there a migration?</li>
+  <li>Are flags and subjects released on error paths? Is every promise chain terminated with a <code>catch</code> or returned to a caller that has one?</li>
+  <li>Is any dynamic text placed in dialog HTML escaped?</li>
+  <li>If the Activity model or compute engine changed, did you check <code>desktop/</code> and <code>webextension/</code> consumers?</li>
+</ol>
+
+<h2 id="facts">Machine-readable facts</h2>
+<p>The block below summarises key facts for automated agents. It is also embedded in this page as a JSON script element with id <code>appcore-facts</code>.</p>
+<pre><code id="facts-view"></code></pre>
+<script type="application/json" id="appcore-facts">
+{
+  "project": "elevate/appcore",
+  "commit": "df9e2ceb",
+  "version": "7.2.2",
+  "framework": { "angular": "14.3", "typescript": "4.8", "rxjs": "7.5", "strict": false, "standaloneComponents": false },
+  "targets": {
+    "desktop": {
+      "configurations": ["desktop", "desktop-prod"],
+      "bootModule": "src/app/boot/desktop-boot.module.ts",
+      "targetModule": "src/app/shared/modules/target/desktop-target.module.ts",
+      "routing": "src/app/shared/modules/routing/desktop-routing.module.ts",
+      "environment": ["src/environments/environment.desktop.ts", "src/environments/environment.desktop.prod.ts"],
+      "persistence": "LokiJS + IndexedDB incremental adapter",
+      "host": "desktop/ (Electron main, IPC via window.api)"
+    },
+    "extension": {
+      "configurations": ["extension", "extension-prod"],
+      "bootModule": "src/app/boot/extension-boot.module.ts",
+      "targetModule": "src/app/shared/modules/target/extension-target.module.ts",
+      "routing": "src/app/shared/modules/routing/extension-routing.module.ts",
+      "environment": ["src/environments/environment.ts", "src/environments/environment.prod.ts"],
+      "persistence": "LokiJS + chrome.storage.local adapter",
+      "host": "webextension/ (MV3 options page app/index.html)"
+    }
+  },
+  "placeholders": [
+    "src/environments/environment.ts",
+    "src/app/boot/target-boot.module.ts",
+    "src/app/shared/modules/target/target.module.ts"
+  ],
+  "sharedLibrary": { "path": "modules/shared", "alias": "@elevate/shared/*", "consumers": ["appcore", "desktop", "webextension"] },
+  "collections": ["activities", "streams", "athlete", "userSettings", "connectorSyncDateTime", "stravaConnectorInfo", "properties", "syncDateTime", "yearProgressPresets"],
+  "abstractTokens": ["DataStore", "ActivityService", "SyncService", "AthleteService", "UserSettingsService", "VersionsProvider", "WindowService", "AppLoadService", "AppService", "ErrorHandler", "OPEN_RESOURCE_RESOLVER", "MENU_ITEMS_PROVIDER", "IPC_TUNNEL_SERVICE"],
+  "migrations": { "registry": "src/app/desktop/migration/desktop-registered-migrations.ts", "versions": ["7.0.0-beta.3", "7.0.0-beta.5", "7.2.0"] },
+  "tests": { "runner": "jest 28 (jasmine2)", "roots": ["src/"], "specFiles": 65, "dataStoreForTests": "TestingDataStore" },
+  "units": { "startTimestamp": "seconds", "syncDateTime": "milliseconds", "startTime": "ISO string" }
+}
+</script>
+<script>
+  (function () {
+    try {
+      var el = document.getElementById("appcore-facts");
+      var view = document.getElementById("facts-view");
+      if (el && view) { view.textContent = JSON.stringify(JSON.parse(el.textContent), null, 2); }
+    } catch (e) { /* leave block empty */ }
+  })();
+</script>
+
+</main>
+</div>
+</body>
+</html>
