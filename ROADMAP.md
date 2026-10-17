@@ -6,9 +6,11 @@ When an item lands, set its status here to `done` with the PR number, and update
 
 ## Scope
 
+- **Personal builds.** The fork's builds are for its owner only. Installed builds update from the fork's own GitHub releases, which CI builds on a tag. No crash reporting.
 - **Desktop first.** The Chrome extension only has to keep compiling and passing its tests; it gets no new features.
+- **Strava connector unchanged.** It stays as it is; no work is planned on it.
 - **Electron now, Angular later.** Electron 27 is end of life and is the security surface, so it moves early. Angular 14 moves to 16 one major at a time once CI and tests are solid, keeping NgModules.
-- **Feature tracks:** Garmin import, then Maps and GPX. ML and AI features come after these.
+- **Order.** Phases 0–3 come strictly first, then faster recalculation, then the feature tracks: Garmin import (watch over USB and Garmin Connect export), then Maps (MapLibre and a heatmap). ML and AI features stay in Later.
 - **Platform:** Linux packaging (`npm run build:package:linux`). macOS signing is out of scope.
 
 ## Known baseline problems
@@ -36,9 +38,10 @@ Exit criterion: CI is green on `main`.
 
 | Status | Branch | Items | Change |
 |--------|--------|-------|--------|
-| open | `fix/disable-upstream-telemetry` | F1, F2, S2 (C8 becomes moot) | Add `sentryDsn: null` and `backendBaseUrl: null` to the desktop environments. Skip `Sentry.init` when the DSN is null, and drop names and OS identifiers from the Sentry context. Make `MachineService.checkIn`, `DesktopInsightsService.registerActivities` and `MapTokenService` no-ops when the backend URL is null. |
-| open | `fix/fork-identity` | F3, F4, F5 | Give the fork its own `appId` and `productName`. Point `publish.owner` and `repository.url` (root and desktop `package.json`) at `vdRobin/elevate`, so installed builds never update to an upstream release. Keep credit to the original author in LICENSE and About. |
-| open | — | F6, F7 | F6 is handled by Maps track B1. F7 (Help, Discord and PayPal links) needs a decision: keep them with credit to upstream, or point them at fork resources. |
+| open | `fix/disable-upstream-telemetry` | F1, F2, S2 (C8 becomes moot) | Add `sentryDsn: null` and `backendBaseUrl: null` to the desktop environments. Skip `Sentry.init` when the DSN is null, and drop names and OS identifiers from the Sentry context. The fork has no crash reporting, so the DSN stays null. Make `MachineService.checkIn`, `DesktopInsightsService.registerActivities` and `MapTokenService` no-ops when the backend URL is null. |
+| open | `fix/fork-identity` | F3, F4, F5 | Give the fork its own `appId` and `productName`. Point `publish.owner` and `repository.url` (root and desktop `package.json`) at `vdRobin/elevate`, since the fork publishes its own releases and installed builds must never update to an upstream release. Fork tags must sort above the upstream version they replace (for example `7.3.0`). Keep credit to the original author in LICENSE and About. |
+| open | `fix/remove-upstream-links` | F7 | Remove the Help FAQ fetched from the upstream docs repo (`help.component.ts`), the Discord link (`report.component.ts`) and the Donate/PayPal page (`donate.component.ts`), with their menu entries and routes. F6 is handled by Maps track B1. |
+| open | `ci/release-on-tag` | — | GitHub Actions job on a tag pushed on `main`: build the Linux AppImage (`build:package:linux`) and publish a GitHub release with `latest-linux.yml`, so electron-updater finds it. Needs Phase 0 CI and `fix/fork-identity`. |
 
 ## Phase 2: Data safety and security
 
@@ -62,6 +65,14 @@ One small pull request per line, each with the regression spec named in the cata
 |--------|--------|--------|
 | open | `build/electron-upgrade` | Move desktop from Electron 27 to the current supported stable major, with matching `electron-builder` and `electron-updater`, and the same version for appcore's `electron` types. Check `BrowserWindow` options, the preload bridge and `safeStorage` against Electron's breaking-changes list. Test the Linux package: build, launch the AppImage, run a file sync, a backup and a restore. |
 
+Feature work starts once this phase lands.
+
+## Phase 3.5: Faster recalculation
+
+| Status | Branch | Items | Change |
+|--------|--------|-------|--------|
+| open | `perf/parallel-recalc` | #1108 | Run the per-activity `computeActivity` jobs of a recalculation across a bounded pool of workers in desktop main instead of one at a time. Needs D6 (`fix/worker-crash`) so a crashed worker cannot stall the pool. |
+
 ## Phase 4: Test floor and Angular (alongside the features)
 
 - Specs for backup, restore and sync; run some specs under `extension-target.module`.
@@ -70,35 +81,38 @@ One small pull request per line, each with the regression spec named in the cata
 
 ## Track A: Garmin import
 
-Guide: `.claude/skills/elevate-garmin-import`.
+Guide: `.claude/skills/elevate-garmin-import`. Sources in scope: a watch mounted over USB and a Garmin Connect "Export your data" ZIP.
 
 | # | Status | Branch | Change |
 |---|--------|--------|--------|
 | A1 | open | `fix/garmin-file-case` | G1, G2: lowercase file extensions in `desktop/src/connectors/file/file.connector.ts` and `un-archiver.ts`, so `GARMIN/Activity/*.FIT` and `.ZIP` files are found. Add an uppercase `.FIT` fixture. |
 | A2 | open | `fix/garmin-export-nested-zip` | G3: inflate nested archives (with a depth limit), so a Garmin Connect "Export your data" ZIP imports; never delete a source archive that produced no activities. Add a zip-in-zip fixture. |
-| A3 | open | `feat/file-autosync-startup` | File connector option to run a fast sync when the app starts (upstream #1225, #1244). |
 | A4 | open | `feat/garmin-device-detect` | On Linux, detect a mounted watch (`/media/$USER/*/GARMIN/Activity`, `/run/media/...`) and offer it as the File connector source. Replace the informational Garmin Connect component with real import guidance. |
-| A5 | open | `fix/overlapping-activities` | Import overlapping activities recorded on different devices (upstream #1089). Investigate the overlap check first; the likely fix allows overlaps when sport types differ. |
-| A6 | open | — | FIT sport mapping for tennis and padel (upstream #1245, #1182); hide or implement the "detect sport type" option (C9). |
 
-## Track B: Maps and GPX
+## Track B: Maps
 
 Guide: `.claude/skills/elevate-maps-gpx`.
 
 | # | Status | Branch | Change |
 |---|--------|--------|--------|
 | B1 | open | `feat/maplibre-osm` | Replace Mapbox GL with MapLibre GL and a token-free OpenStreetMap-based style in `activity-view-map.component.ts`. Closes F6 and removes the dependency on `MapTokenService` and the upstream backend. Keep the start, end and move markers and the chart-to-map hover sync. |
-| B2 | open | `feat/gpx-route-viewer` | Import a `.gpx` route or course that is not an activity, store it in its own collection, and show it on the map with an elevation profile. Keep it unrouted until complete. |
 | B3 | open | `feat/activities-heatmap` | Map of all activities from the stored `latlng` streams: decode the compressed streams in a worker, downsample, render as a MapLibre heatmap or line layer, and filter by sport and date. |
 
 ## Later
 
-Ideas from upstream issues and the fork goals, not yet scheduled: all-time records (#1179), manual stress score override (#1129), gear and maintenance tracking (#1117), multi-threaded recalculation (#1108), year progressions for all activity types (#1178), sport auto-detection and FTP/critical power estimation (`.claude/skills/elevate-ml-features`), an AI coach (`.claude/skills/elevate-ai-assistant`).
+Ideas not yet scheduled:
+
+- From the Garmin track: file sync when the app starts (A3, upstream #1225, #1244); importing overlapping activities recorded on different devices (A5, #1089); FIT sport mapping for tennis and padel (A6, #1245, #1182) and hiding or implementing the "detect sport type" option (C9).
+- From the Maps track: a GPX route and course viewer with an elevation profile (B2).
+- From upstream issues: all-time records (#1179), manual stress score override (#1129), gear and maintenance tracking (#1117), year progressions for all activity types (#1178).
+- ML and AI: sport auto-detection and FTP/critical power estimation (`.claude/skills/elevate-ml-features`), an AI coach (`.claude/skills/elevate-ai-assistant`).
 
 ## Verification
 
 - Every pull request: `.claude/skills/elevate-verify/scripts/verify.sh`, which runs the type checks and tests for the changed projects, plus `npx ng build --configuration=desktop-prod` in `appcore/` when templates change. CI repeats this once Phase 0 lands.
 - Phase 0 is done when both root type checks pass locally and in CI from a clean install, and `appcore/node_modules/@elevate/shared` is a symlink.
 - Phases 1–3: the catalog's regression specs pass. A manual Linux run (`npm start` and `npm run launch:dev:app` in `desktop/`, then the packaged AppImage) covers a sync, a recalculation, and a backup and restore. With telemetry disabled, DevTools Network shows no requests to upstream hosts.
+- Release job: a test tag produces a GitHub release with the AppImage and `latest-linux.yml`, and an installed older fork build offers the update.
+- Phase 3.5: a parallel recalculation gives the same activity results as a sequential one on a fixture set, and is faster on several hundred activities.
 - Track A: a `GARMIN/Activity` folder copied from a watch and a Garmin Connect export ZIP both import with the expected activity counts, and the source archive is kept.
-- Track B: the activity map renders with no token configured; the GPX viewer and heatmap stay responsive with several hundred activities.
+- Track B: the activity map renders with no token configured; the heatmap stays responsive with several hundred activities.
