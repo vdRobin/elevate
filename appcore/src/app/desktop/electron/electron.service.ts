@@ -124,7 +124,7 @@ export class ElectronService {
       | "home"
       | "appData"
       | "userData"
-      | "cache"
+      | "sessionData"
       | "temp"
       | "exe"
       | "module"

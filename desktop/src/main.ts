@@ -342,7 +342,7 @@ class Main {
           | "home"
           | "appData"
           | "userData"
-          | "cache"
+          | "sessionData"
           | "temp"
           | "exe"
           | "module"
