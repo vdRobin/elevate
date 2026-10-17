@@ -1,1 +1,12 @@
-npm run prettier
+#!/bin/sh
+# Runs as a plain git hook (core.hooksPath=.husky) or through husky's shim.
+ROOT=$(git rev-parse --show-toplevel) || exit 1
+
+sh "$ROOT/scripts/git-hooks/check-secrets.sh" || exit 1
+
+# Format staged files only. Skipped when root dependencies are not installed.
+if [ -x "$ROOT/node_modules/.bin/pretty-quick" ]; then
+  "$ROOT/node_modules/.bin/pretty-quick" --staged || exit 1
+else
+  echo "pre-commit: pretty-quick not installed (run 'npm install' at the repository root); formatting skipped." >&2
+fi

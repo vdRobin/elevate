@@ -1,10 +1,21 @@
-# EXAMPLE USAGE:
-#
-#   Refer for explanation to following link:
+# Git hooks. Husky (core.hooksPath=.husky) and lefthook both run the same
+# scripts from scripts/git-hooks/, so the checks are identical whichever is used.
 #   https://github.com/evilmartians/lefthook/blob/master/docs/configuration.md
 #
 pre-commit:
-  parallel: true
   commands:
+    secrets:
+      run: sh scripts/git-hooks/check-secrets.sh
     lint:
       run: npx --no-install pretty-quick --staged
+
+commit-msg:
+  commands:
+    conventional:
+      run: sh scripts/git-hooks/check-commit-msg.sh {1}
+
+pre-push:
+  commands:
+    protected-branches:
+      use_stdin: true
+      run: sh scripts/git-hooks/check-push.sh {1}
