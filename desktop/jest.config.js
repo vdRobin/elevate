@@ -1,10 +1,11 @@
 module.exports = {
   testRunner: "jest-jasmine2",
   transform: {
-    ".(ts|tsx)": "ts-jest"
+    ".(ts|tsx)": "ts-jest",
+    "node_modules/(serialize-error|retry-axios)/.+\\.js$": "ts-jest"
   },
   testTimeout: 60000,
-  transformIgnorePatterns: ["json"],
+  transformIgnorePatterns: ["json", "node_modules/(?!(serialize-error|retry-axios)/)"],
   globals: {
     "ts-jest": {
       tsconfig: "./tsconfig.json"
@@ -16,6 +17,7 @@ module.exports = {
   moduleFileExtensions: ["ts", "tsx", "js"],
 
   moduleNameMapper: {
-    "^@elevate/shared/(.*)$": "<rootDir>/../appcore/modules/shared/$1/"
+    "^@elevate/shared/(.*)$": "<rootDir>/../appcore/modules/shared/$1/",
+    "^axios$": "<rootDir>/node_modules/axios/dist/node/axios.cjs"
   }
 };
