@@ -194,7 +194,7 @@ Contains the web extension behaviour that acts directly on _strava.com_ website.
 
 #### Install requirements
 
-You will need to install [NodeJS](https://nodejs.org) (v15+) to build both desktop and chrome web extension.
+You will need [NodeJS](https://nodejs.org) 22 (see `.nvmrc`; run `nvm use`) to build both desktop and chrome web extension.
 
 #### Clone the project
 
