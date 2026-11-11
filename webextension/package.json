@@ -11,7 +11,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/thomaschampagne/elevate"
+    "url": "https://github.com/vdRobin/elevate"
   },
   "scripts": {
     "archive": "node -e \"const bestzip = require('bestzip');const manifest = require('./dist/manifest.json');const fs = require('fs');const cwd = process.cwd() + '/dist/';const target = 'package/';const filename = `web-extension_v${manifest.version_name}.zip`;const output = '../' + target + filename;if (!fs.existsSync(target)) fs.mkdirSync(target);bestzip.nodeZip({ source: '*', cwd: cwd, destination: output }).then(() => {console.log('Generated archive ' + filename);process.exit(0);}).catch((err) => {console.error(err.stack);process.exit(1);});\"",

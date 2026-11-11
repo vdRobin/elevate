@@ -385,7 +385,7 @@ class Main {
     // Create the browser window.
     const workAreaSize: Electron.Size = Main.computeAppTargetSize();
     const windowOptions: Electron.BrowserWindowConstructorOptions = {
-      title: "Elevate Sports App",
+      title: "Elevator",
       width: workAreaSize.width,
       height: workAreaSize.height,
       center: true,
