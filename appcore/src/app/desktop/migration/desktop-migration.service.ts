@@ -97,10 +97,6 @@ export class DesktopMigrationService {
           return Promise.resolve(null);
         }
 
-        if (semver.eq(existingVersion, packageVersion)) {
-          return Promise.resolve({ fromVersion: existingVersion, toVersion: packageVersion });
-        }
-
         if (semver.lt(existingVersion, packageVersion)) {
           return Promise.resolve({ fromVersion: existingVersion, toVersion: packageVersion });
         }
@@ -134,7 +130,8 @@ export class DesktopMigrationService {
     return this.getDesktopRegisteredMigrations()
       .reduce((previousMigrationDone: Promise<void>, migration: DesktopMigration) => {
         return previousMigrationDone.then(() => {
-          if (semver.lt(fromVersion, migration.version)) {
+          // Apply migrations newer than the installed version, up to the version being installed
+          if (semver.lt(fromVersion, migration.version) && semver.lte(migration.version, toVersion)) {
             this.logger.info(`Migrating to ${migration.version}: ${migration.description}`);
             return migration.upgrade(this.db, this.injector).then(() => {
               // Check if migration requires a recalculation
