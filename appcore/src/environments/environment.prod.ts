@@ -11,5 +11,6 @@ export const environment = {
   showActivityDebugData: false,
   showRouteUrl: false,
   bypassProfileRestoreChecks: false,
+  sentryDsn: null, // Only for desktop app
   backendBaseUrl: null // Only for desktop app
 };

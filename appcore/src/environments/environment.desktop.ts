@@ -16,5 +16,7 @@ export const environment = {
   showActivityDebugData: false,
   showRouteUrl: true,
   bypassProfileRestoreChecks: false,
-  backendBaseUrl: "http://localhost:8081"
+  // The fork reports no crashes and talks to no backend: both stay null (catalog F1, F2).
+  sentryDsn: null,
+  backendBaseUrl: null
 };

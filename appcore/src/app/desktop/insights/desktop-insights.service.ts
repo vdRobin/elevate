@@ -31,8 +31,8 @@ export class DesktopInsightsService extends MachineAuthenticatedService {
   }
 
   public registerActivities(activities: Activity[], replaceAll: boolean): void {
-    // Skip if no activities to push
-    if (!activities || activities.length === 0) {
+    // Skip if no backend or no activities to push
+    if (!MachineService.isBackendEnabled() || !activities || activities.length === 0) {
       return;
     }
 

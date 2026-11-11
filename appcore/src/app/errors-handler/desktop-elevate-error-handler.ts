@@ -18,8 +18,12 @@ import { AthleteModel } from "@elevate/shared/models/athlete/athlete.model";
   providedIn: "root"
 })
 export class DesktopElevateErrorHandler extends ElevateErrorHandler {
-  private static readonly SENTRY_DATA_SOURCE_NAME: string =
-    "https://884e69ce1f2c4891abbaca363d8474ce@sentry.io/1839710";
+  /**
+   * Crash reporting runs only in production builds that configure a Sentry DSN. The fork sets none.
+   */
+  public static isCrashReportingEnabled(): boolean {
+    return environment.production && !!environment.sentryDsn;
+  }
 
   constructor(
     @Inject(VersionsProvider) protected readonly versionsProvider: VersionsProvider,
@@ -32,25 +36,21 @@ export class DesktopElevateErrorHandler extends ElevateErrorHandler {
   ) {
     super(versionsProvider, dialog, snackBar, loggerService);
 
-    if (environment.production) {
+    if (DesktopElevateErrorHandler.isCrashReportingEnabled()) {
       Sentry.init({
-        dsn: DesktopElevateErrorHandler.SENTRY_DATA_SOURCE_NAME,
+        dsn: environment.sentryDsn,
         release: this.versionsProvider.getPackageVersion(),
         environment: "production",
         autoSessionTracking: false
       });
 
+      // Context carries no names, machine id, OS username or hostname.
       Promise.all([this.runtimeInfoService.get(), this.athleteService.fetch()]).then(results => {
         const [runtimeInfo, athlete] = results as [RuntimeInfo, AthleteModel];
 
         Sentry.setContext("athlete", {
           gender: athlete.gender,
-          firstName: athlete.firstName,
-          lastName: athlete.lastName,
           practiceLevel: athlete.practiceLevel,
-          machineId: runtimeInfo.athleteMachineId,
-          osUsername: runtimeInfo.osUsername,
-          osHostname: runtimeInfo.osHostname,
           cpu: runtimeInfo.cpu.name,
           memory: runtimeInfo.memorySizeGb
         });
@@ -59,7 +59,7 @@ export class DesktopElevateErrorHandler extends ElevateErrorHandler {
   }
 
   public onErrorHandled(error: Error): void {
-    if (environment.production) {
+    if (DesktopElevateErrorHandler.isCrashReportingEnabled()) {
       Sentry.captureException((error as any).originalError || error);
     }
   }
