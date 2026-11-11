@@ -1,6 +1,4 @@
 import { Component, Inject } from "@angular/core";
-import { AppRoutes } from "../../shared/models/app-routes";
-import { Router } from "@angular/router";
 import {
   OPEN_RESOURCE_RESOLVER,
   OpenResourceResolver
@@ -13,10 +11,7 @@ import { AppPackage } from "@elevate/shared/tools/app-package";
   styleUrls: ["./download-desktop-app.component.scss"]
 })
 export class DownloadDesktopAppComponent {
-  constructor(
-    @Inject(Router) private readonly router: Router,
-    @Inject(OPEN_RESOURCE_RESOLVER) private readonly openResourceResolver: OpenResourceResolver
-  ) {}
+  constructor(@Inject(OPEN_RESOURCE_RESOLVER) private readonly openResourceResolver: OpenResourceResolver) {}
 
   public onWindowsDownload(): void {
     this.openResourceResolver.openLink(`${AppPackage.getElevateDoc()}/Download-%26-Install/Windows/`);
@@ -24,9 +19,5 @@ export class DownloadDesktopAppComponent {
 
   public onMacDownload(): void {
     this.openResourceResolver.openLink(`${AppPackage.getElevateDoc()}/Download-%26-Install/macOS/`);
-  }
-
-  public onDonateClicked(): void {
-    this.router.navigate([AppRoutes.donate]);
   }
 }

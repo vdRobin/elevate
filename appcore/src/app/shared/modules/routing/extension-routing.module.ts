@@ -38,10 +38,6 @@ const routes: Routes = [
       import("../../../zones-settings/zones-settings.module").then(module => module.ZonesSettingsModule)
   },
   {
-    path: AppRoutes.donate,
-    loadChildren: () => import("../../../donate/donate.module").then(module => module.DonateModule)
-  },
-  {
     path: AppRoutes.releasesNotes,
     loadChildren: () =>
       import("../../../releases-notes/releases-notes.module").then(module => module.ReleasesNotesModule)
@@ -56,10 +52,6 @@ const routes: Routes = [
       import("../../../advanced-menu/extension/extension-advanced-menu.module").then(
         module => module.ExtensionAdvancedMenuModule
       )
-  },
-  {
-    path: AppRoutes.help,
-    loadChildren: () => import("../../../help/help.module").then(module => module.HelpModule)
   },
   {
     path: "",
