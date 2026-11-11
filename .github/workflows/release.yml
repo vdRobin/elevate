@@ -1,0 +1,102 @@
+name: "Release"
+
+# A tag pushed on main (e.g. 7.3.0 or 7.4.0-beta.1) builds the Linux AppImage and publishes it, with
+# latest-linux.yml for electron-updater, as a GitHub release of this repository.
+# Pull requests that touch packaging build the AppImage without publishing it.
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+*"]
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/release.yml"
+      - "desktop/package.json"
+      - "desktop/package-lock.json"
+      - "desktop/build/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  linux:
+    name: Linux AppImage
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check the tag is on main and matches the app version
+        if: github.event_name == 'push'
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="$(node -p "require('./desktop/package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag $tag does not match desktop/package.json version $version"
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $tag points to a commit that is not on main"
+            exit 1
+          fi
+          case "$tag" in
+            *-*) echo "EP_PRE_RELEASE=true" >> "$GITHUB_ENV" ;;
+          esac
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+          cache-dependency-path: |
+            package-lock.json
+            appcore/package-lock.json
+            desktop/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install appcore dependencies
+        working-directory: appcore
+        run: npm ci
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build desktop and appcore (production)
+        working-directory: desktop
+        run: npm run build:prod
+
+      - name: Package AppImage
+        if: github.event_name != 'push'
+        working-directory: desktop
+        run: npx electron-builder build --linux --publish never
+
+      - name: Package and publish AppImage
+        if: github.event_name == 'push'
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder build --linux --publish always
+
+      - name: Upload package
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-package
+          path: |
+            desktop/package/*.AppImage
+            desktop/package/latest-linux.yml
+          if-no-files-found: error
+          retention-days: 7
