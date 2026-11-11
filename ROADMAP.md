@@ -53,7 +53,7 @@ One small pull request per line, each with the regression spec named in the cata
 | done (#35) | `fix/sync-complete-catch` | D4, C1, C6 | Release the syncing state when saving fails; null check for fast sync with an empty database; tag errors with the current connector. |
 | open | `fix/backup-errors` | D5 | Error the backup progress subject on IPC or disk failures. |
 | open | `fix/atomic-restore` | D2 | Stage the restore in a fresh in-memory Loki and swap only when complete. |
-| open | `fix/worker-crash` | D6 | Handle worker `error` and non-zero `exit` events in `desktop/src/worker-service.ts`. |
+| in review | `fix/worker-crash` | D6 | Handle worker `error` and non-zero `exit` events in `desktop/src/worker-service.ts`. |
 | open | `fix/tls-verification` | S5 | Remove `rejectUnauthorized: false` from `http.client.ts`. |
 | open | `fix/escape-error-dialogs` | S1, S4 | Add an `escapeHtml` helper in `modules/shared/tools` and a CSP meta tag in `appcore/src/index.html`; gate `window.db` behind `!environment.production`. |
 | open | `fix/extension-restore` | D3, D7, C2 | Keep the extension safe: validate before wiping on restore, invalidate the collection cache on reload, wait for the database `LOADED` event. |
