@@ -1,0 +1,83 @@
+name: "PR checks"
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Type checks, tests and AOT build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+          cache-dependency-path: |
+            package-lock.json
+            appcore/package-lock.json
+            desktop/package-lock.json
+            webextension/package-lock.json
+
+      # The root postinstall runs "npm install" in each project, which can rewrite lockfiles.
+      # Install every project from its lockfile instead.
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install webextension dependencies
+        working-directory: webextension
+        run: npm ci
+
+      - name: Install appcore dependencies
+        working-directory: appcore
+        run: npm ci
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      # appcore requires these files at build and test time; they are generated, not committed.
+      - name: Generate build metadata
+        run: |
+          (cd desktop && npm run build:metadata)
+          (cd webextension && npm run build:metadata)
+
+      - name: Type check (desktop)
+        run: npm run type:check:desktop
+
+      - name: Type check (extension)
+        run: npm run type:check:extension
+
+      - name: Test desktop
+        working-directory: desktop
+        run: npm test
+
+      - name: Test appcore
+        working-directory: appcore
+        run: npm test
+
+      # Karma's launcher is based on "Chromium"; point it at the runner's Chrome.
+      - name: Test webextension
+        working-directory: webextension
+        run: CHROMIUM_BIN="$(command -v google-chrome)" npm test
+
+      # The desktop dev build has AOT disabled; the prod build catches template errors.
+      - name: Build appcore (desktop-prod, AOT)
+        working-directory: appcore
+        run: npx ng build --configuration=desktop-prod
