@@ -158,6 +158,32 @@ describe("DesktopSyncService", () => {
         );
       });
 
+      it("should start a full strava sync when a recent sync is requested on an empty database", done => {
+        // Given
+        const connectorType = ConnectorType.STRAVA;
+        spyOn(desktopSyncService.athleteService, "fetch").and.returnValue(Promise.resolve(AthleteModel.DEFAULT_MODEL));
+        spyOn(desktopSyncService.userSettingsService, "fetch").and.returnValue(null);
+        spyOn(desktopSyncService.activityService, "findMostRecent").and.returnValue(Promise.resolve(null));
+        spyOn(desktopSyncService.stravaConnectorInfoService, "fetch").and.returnValue(null);
+        const startSyncSpy = spyOn(desktopSyncService.ipcSyncMessageSender, "startSync").and.returnValue(
+          Promise.resolve("Started")
+        );
+
+        // When
+        const promiseStart = desktopSyncService.sync(true, false, connectorType);
+
+        // Then
+        promiseStart.then(
+          () => {
+            expect(startSyncSpy).toHaveBeenCalledTimes(1);
+            const syncFromDateTimeParam = startSyncSpy.calls.mostRecent().args[4];
+            expect(syncFromDateTimeParam).toBeNull();
+            done();
+          },
+          error => done.fail(error)
+        );
+      });
+
       it("should start a sync and handle sync events", done => {
         // Given
         const connectorType = ConnectorType.STRAVA;
@@ -333,7 +359,7 @@ describe("DesktopSyncService", () => {
       activity.name = "No pain no gain";
       activity.startTime = new Date().toISOString();
       const expectedErrorSyncEvent = ErrorSyncEvent.SYNC_ERROR_UPSERT_ACTIVITY_DATABASE.create(
-        ConnectorType.STRAVA,
+        ConnectorType.FILE,
         activity
       );
       const activitySyncEvent = new ActivitySyncEvent(ConnectorType.FILE, null, activity, isNew);
@@ -355,6 +381,7 @@ describe("DesktopSyncService", () => {
           expect(syncEventNextSpy).toHaveBeenCalledTimes(1);
           expect(syncEvent.type).toEqual(expectedErrorSyncEvent.type);
           expect(syncEvent.code).toEqual(expectedErrorSyncEvent.code);
+          expect(syncEvent.fromConnectorType).toEqual(ConnectorType.FILE);
           expect(syncEvent.activity.name).toEqual(expectedErrorSyncEvent.activity.name);
           expect(syncEvent.activity.startTime).toEqual(expectedErrorSyncEvent.activity.startTime);
           expect(stopSpy).toHaveBeenCalledTimes(1);
@@ -460,6 +487,33 @@ describe("DesktopSyncService", () => {
           throw new Error("Should not be here!" + JSON.stringify(error));
         }
       );
+    });
+
+    it("should release the syncing state and report an error when saving the sync end fails", done => {
+      // Given
+      const syncEvent$ = new Subject<SyncEvent>();
+      const completeSyncEvent = new CompleteSyncEvent(ConnectorType.STRAVA);
+      const saveError = new Error("Database put error");
+      spyOn(desktopSyncService, "getSyncState").and.returnValue(Promise.resolve(SyncState.SYNCED));
+      spyOn(desktopSyncService.connectorSyncDateTimeDao, "getById").and.returnValue(Promise.resolve(null));
+      spyOn(desktopSyncService.connectorSyncDateTimeDao, "put").and.returnValue(Promise.reject(saveError));
+      const isSyncingSpy = spyOn(desktopSyncService.isSyncing$, "next").and.stub();
+      const throwSyncErrorSpy = spyOn(desktopSyncService, "throwSyncError").and.stub();
+
+      // When
+      desktopSyncService.handleSyncCompleteEvents(syncEvent$, completeSyncEvent);
+
+      // Then
+      syncEvent$.subscribe((syncEvent: ErrorSyncEvent) => {
+        expect(syncEvent.code).toEqual(ErrorSyncEvent.UNHANDLED_ERROR_SYNC.code);
+        expect(syncEvent.fromConnectorType).toEqual(ConnectorType.STRAVA);
+        expect(isSyncingSpy).toHaveBeenCalledWith(false);
+
+        setTimeout(() => {
+          expect(throwSyncErrorSpy).toHaveBeenCalledWith(saveError);
+          done();
+        });
+      });
     });
 
     it("should complete sync of a already synced connector", done => {

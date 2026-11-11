@@ -56,7 +56,11 @@ export class DesktopSyncService extends SyncService<ConnectorSyncDateTime[]> imp
   >([
     [
       ConnectorType.STRAVA,
-      () => this.activityService.findMostRecent().then(activity => Promise.resolve(activity.startTimestamp * 1000))
+      // No activity yet: null means a full sync
+      () =>
+        this.activityService
+          .findMostRecent()
+          .then(activity => Promise.resolve(activity ? activity.startTimestamp * 1000 : null))
     ],
     [
       ConnectorType.FILE,
@@ -356,6 +360,18 @@ export class DesktopSyncService extends SyncService<ConnectorSyncDateTime[]> imp
         this.logger.debug(completeSyncEvent);
         this.isSyncing$.next(false);
         syncEvents$.next(completeSyncEvent); // Forward for upward UI use.
+      })
+      .catch(error => {
+        // Saving the end of sync failed: release the syncing state and report it
+        this.logger.error(error);
+        this.isSyncing$.next(false);
+        syncEvents$.next(
+          ErrorSyncEvent.UNHANDLED_ERROR_SYNC.create(
+            this.currentConnectorType,
+            `Unable to save the end of the sync: ${error?.message || error}`
+          )
+        );
+        this.throwSyncError(error); // Should be caught by Error Handler
       });
   }
 
@@ -416,7 +432,7 @@ export class DesktopSyncService extends SyncService<ConnectorSyncDateTime[]> imp
 
         syncEvents$.next(
           ErrorSyncEvent.SYNC_ERROR_UPSERT_ACTIVITY_DATABASE.create(
-            ConnectorType.STRAVA,
+            this.currentConnectorType,
             activitySyncEvent.activity,
             upsertError
           )
