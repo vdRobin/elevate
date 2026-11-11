@@ -32,16 +32,16 @@ Found on 2026-10-17. These are why Phase 0 comes first.
 | 0.3 | done (#13) | `ci/pr-checks` | GitHub Actions on pull requests and `main`, Node 22 on ubuntu: root install, `type:check:desktop`, `type:check:extension`, `npm test` (Karma uses the runner's Chrome), and `ng build --configuration=desktop-prod` in `appcore/` to catch AOT template errors. Bump CodeQL to v3. |
 | 0.4 | done (#14) | `test/run-shared-specs` | L5: add `<rootDir>/modules/` to the appcore Jest `roots` once its spec passes. |
 
-Exit criterion: CI is green on `main`.
+Exit criterion: CI is green on `main`. Met on 2026-11-11 (run 43087325667).
 
 ## Phase 1: Fork hygiene
 
 | Status | Branch | Items | Change |
 |--------|--------|-------|--------|
-| in review | `fix/disable-upstream-telemetry` | F1, F2, S2 (C8 becomes moot) | Add `sentryDsn: null` and `backendBaseUrl: null` to the desktop environments. Skip `Sentry.init` when the DSN is null, and drop names and OS identifiers from the Sentry context. The fork has no crash reporting, so the DSN stays null. Make `MachineService.checkIn`, `DesktopInsightsService.registerActivities` and `MapTokenService` no-ops when the backend URL is null. |
-| open | `fix/fork-identity` | F3, F4, F5 | Give the fork its own `appId` and `productName`. Point `publish.owner` and `repository.url` (root and desktop `package.json`) at `vdRobin/elevate`, since the fork publishes its own releases and installed builds must never update to an upstream release. Fork tags must sort above the upstream version they replace (for example `7.3.0`). Keep credit to the original author in LICENSE and About. |
-| in review | `fix/remove-upstream-links` | F7 | Remove the Help FAQ fetched from the upstream docs repo (`help.component.ts`), the Discord link (`report.component.ts`) and the Donate/PayPal page (`donate.component.ts`), with their menu entries and routes. F6 is handled by Maps track B1. |
-| open | `ci/release-on-tag` | — | GitHub Actions job on a tag pushed on `main`: build the Linux AppImage (`build:package:linux`) and publish a GitHub release with `latest-linux.yml`, so electron-updater finds it. Needs Phase 0 CI and `fix/fork-identity`. |
+| done (#15) | `fix/disable-upstream-telemetry` | F1, F2, S2 (C8 becomes moot) | Add `sentryDsn: null` and `backendBaseUrl: null` to the desktop environments. Skip `Sentry.init` when the DSN is null, and drop names and OS identifiers from the Sentry context. The fork has no crash reporting, so the DSN stays null. Make `MachineService.checkIn`, `DesktopInsightsService.registerActivities` and `MapTokenService` no-ops when the backend URL is null. |
+| done (#17) | `fix/fork-identity` | F3, F4, F5 | Give the fork its own `appId` and `productName`: the desktop app is **Elevator** (`com.vdrobin.elevate`), with its data in its own folder (`~/.config/Elevator` on Linux). Point `publish.owner` and `repository.url` (root and desktop `package.json`) at `vdRobin/elevate`, since the fork publishes its own releases and installed builds must never update to an upstream release. Fork tags must sort above the upstream version they replace (for example `7.3.0`). Keep credit to the original author in LICENSE and About. |
+| done (#16) | `fix/remove-upstream-links` | F7 | Remove the Help FAQ fetched from the upstream docs repo (`help.component.ts`), the Discord link (`report.component.ts`) and the Donate/PayPal page (`donate.component.ts`), with their menu entries and routes. F6 is handled by Maps track B1. |
+| open | `ci/release-on-tag` | — | GitHub Actions job on a tag pushed on `main`: build the Linux AppImage (`build:package:linux`) and publish a GitHub release with `latest-linux.yml`, so electron-updater finds it. Needs Phase 0 CI and `fix/fork-identity`. Bump the version to `7.3.0` for the first fork release, and switch the Linux target from `deb` (the current `build.linux.target`) to `AppImage`. |
 
 ## Phase 2: Data safety and security
 
