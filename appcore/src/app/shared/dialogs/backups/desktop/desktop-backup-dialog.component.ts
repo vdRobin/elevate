@@ -154,6 +154,7 @@ export class DesktopBackupDialogComponent implements OnInit {
           }
         },
         error => {
+          this.isBackupProcessing = false;
           throw new ElevateException(error);
         },
         () => {
