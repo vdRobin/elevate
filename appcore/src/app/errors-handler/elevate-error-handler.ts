@@ -16,7 +16,7 @@ export abstract class ElevateErrorHandler implements ErrorHandler {
   ) {}
 
   private static provideErrorIfPromiseRejection(error: PromiseRejectionEvent | any): Error {
-    if (error.promise && error.promise) {
+    if (error?.promise) {
       error = error.rejection;
     }
     return error;
@@ -29,9 +29,9 @@ export abstract class ElevateErrorHandler implements ErrorHandler {
   public handleError(error: Error): void {
     error = ElevateErrorHandler.provideErrorIfPromiseRejection(error);
 
-    this.loggerService.error(error.message || error);
-
     if (error) {
+      this.loggerService.error(error.message || error);
+
       let errorMessage: string;
 
       if (typeof error === "string") {
@@ -73,9 +73,7 @@ export abstract class ElevateErrorHandler implements ErrorHandler {
 
       this.onErrorHandled(error);
     } else {
-      alert(
-        "Unknown error occurred.\n\nCan you screenshot this and report a bug?\n\nThanks!\n\n" + error.stack.toString()
-      );
+      alert("Unknown error occurred.\n\nCan you screenshot this and report a bug?\n\nThanks!\n\n" + String(error));
     }
   }
 }

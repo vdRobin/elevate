@@ -46,4 +46,19 @@ describe("DesktopElevateErrorHandler", () => {
     expect(data.title).not.toContain("<img");
     expect(data.content).not.toContain("<img");
   });
+
+  it("should handle a null error without throwing", () => {
+    // Given
+    const handler = Object.create(DesktopElevateErrorHandler.prototype) as DesktopElevateErrorHandler;
+    const loggerErrorSpy = jasmine.createSpy("error");
+    (handler as any).loggerService = { error: loggerErrorSpy };
+    const alertSpy = spyOn(window, "alert").and.stub();
+
+    // When
+    expect(() => handler.handleError(null)).not.toThrow();
+
+    // Then
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(loggerErrorSpy).not.toHaveBeenCalled();
+  });
 });
