@@ -29,8 +29,8 @@ Found on 2026-10-17. These are why Phase 0 comes first.
 |---|--------|--------|--------|
 | 0.1 | done (0b5a9f1f) | `build/npm-install-links` | Add `.npmrc` with `install-links=false` to `appcore/` and `webextension/`, so `file:` dependencies are symlinks. Add a root `.nvmrc` (Node 22) and update the Node note in the README. |
 | 0.2 | done (f49b5e40, 252bfcf3, 479fb823) | `fix/desktop-type-check` | Make desktop type-check shared code against its own Electron by mapping `"electron": ["./node_modules/electron"]` in `desktop/tsconfig.json` `paths`. If that is not enough, align appcore's `electron` devDependency with desktop's. |
-| 0.3 | in review | `ci/pr-checks` | GitHub Actions on pull requests and `main`, Node 22 on ubuntu: root install, `type:check:desktop`, `type:check:extension`, `npm test` (Karma uses the runner's Chrome), and `ng build --configuration=desktop-prod` in `appcore/` to catch AOT template errors. Bump CodeQL to v3. |
-| 0.4 | open | `test/run-shared-specs` | L5: add `<rootDir>/modules/` to the appcore Jest `roots` once its spec passes. |
+| 0.3 | done (#13) | `ci/pr-checks` | GitHub Actions on pull requests and `main`, Node 22 on ubuntu: root install, `type:check:desktop`, `type:check:extension`, `npm test` (Karma uses the runner's Chrome), and `ng build --configuration=desktop-prod` in `appcore/` to catch AOT template errors. Bump CodeQL to v3. |
+| 0.4 | done (#14) | `test/run-shared-specs` | L5: add `<rootDir>/modules/` to the appcore Jest `roots` once its spec passes. |
 
 Exit criterion: CI is green on `main`.
 
