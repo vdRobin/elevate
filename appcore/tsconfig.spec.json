@@ -46,6 +46,7 @@
   ],
   "include": [
     "src/**/*.spec.ts",
+    "modules/**/*.spec.ts",
     "src/**/*.d.ts"
   ]
 }

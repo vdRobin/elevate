@@ -46,7 +46,7 @@ describe("LowPassFilter", () => {
     it("should return smoothed array", () => {
       lowPassFilter.smoothing = 0.5;
       const values = [10, 8, 9, 10, 12, 8, 50, 10, 12, 8];
-      expect(lowPassFilter.smoothArray(values)).toEqual([10, 9, 9, 10, 11, 9, 30, 20, 16, 12]);
+      expect(lowPassFilter.smoothArray(values)).toEqual([10, 9, 9, 9.5, 10.75, 9.38, 29.69, 19.84, 15.92, 11.96]);
     });
   });
 });

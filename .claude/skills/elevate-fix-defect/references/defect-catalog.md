@@ -81,4 +81,4 @@ The fork inherits endpoints and identifiers that belong to the original author. 
 | L2 | open | `appcore/src/app/errors-handler/elevate-error-handler.ts:32`, `:77` | `error.message` read before the null check; fallback branch reads `.stack` of a falsy value. |
 | L3 | open | `appcore/modules/shared/models/athlete/athlete-snapshot.model.ts:15` | `isSame` holds "is different"; `lthr` dereferenced without a guard. Rename locally and guard. |
 | L4 | open | `appcore/src/app/shared/dao/base.dao.ts` | `removeMany` throws `NotImplementedException`; `DbEvent.SAVED` never emitted. |
-| L5 | open | `appcore/jest.config.js` | `roots: ["<rootDir>/src/"]` skips `modules/shared/**/*.spec.ts`. Add `"<rootDir>/modules/"` once the spec there passes. |
+| L5 | fixed | `appcore/jest.config.js` | `roots: ["<rootDir>/src/"]` skips `modules/shared/**/*.spec.ts`. Fixed: `modules/` added to Jest `roots` and the spec `include`; the `smoothArray` expectation updated to the 2-decimal rounding introduced in 114829e1. |
