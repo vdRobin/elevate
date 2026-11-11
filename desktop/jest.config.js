@@ -1,3 +1,7 @@
+// Specs expect local-time results (e.g. "Afternoon Ride" for 11:10Z) computed in the zone the fixtures were
+// written in. Pin it so the suite gives the same results on a UTC CI runner. Workers inherit this variable.
+process.env.TZ = "Europe/Paris";
+
 module.exports = {
   testRunner: "jest-jasmine2",
   transform: {
