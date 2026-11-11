@@ -360,6 +360,41 @@ describe("DataStore", () => {
       });
   });
 
+  it("should insert a copy of the default value when a singleton document is missing", async () => {
+    // Given
+    const defaultDoc: FakeDoc = { id: "default", name: "Default document" };
+
+    // When: the default is inserted, removed, then inserted again
+    const first = await dataStore.findOne(collectionDef, defaultDoc, {});
+    await dataStore.clear(collectionDef, true);
+    const second = await dataStore.findOne(collectionDef, defaultDoc, {});
+
+    // Then: the shared default object is never stamped by Loki
+    expect((defaultDoc as any).$loki).toBeUndefined();
+    expect((defaultDoc as any).meta).toBeUndefined();
+    expect(first.name).toEqual("Default document");
+    expect(second.name).toEqual("Default document");
+  });
+
+  it("should remove many documents", done => {
+    // Given
+    collection.insert({ id: "01", name: "One" });
+    collection.insert({ id: "02", name: "Two" });
+    collection.insert({ id: "03", name: "Three" });
+    const docsToRemove = collection.find({ id: { $in: ["01", "03"] } });
+
+    // When
+    const promise = dataStore.removeMany(collectionDef, docsToRemove, true);
+
+    // Then
+    promise
+      .then(() => dataStore.find(collectionDef, []))
+      .then(results => {
+        expect(results.map(doc => doc.id)).toEqual(["02"]);
+        done();
+      });
+  });
+
   it("should clear docs", done => {
     // Given
     const fakeDoc01: FakeDoc = { id: "01", name: "My 1st document" };

@@ -281,6 +281,39 @@ describe("DesktopMigrationService", () => {
     );
   });
 
+  it("should not apply migrations newer than the version being installed", done => {
+    // Given
+    class FakeMigration extends DesktopMigration {
+      public requiresRecalculation = false;
+      public description = "Fake migration";
+
+      constructor(public version: string) {
+        super();
+      }
+
+      public upgrade(db: LokiConstructor, injector: Injector): Promise<void> {
+        return Promise.resolve();
+      }
+    }
+
+    const toInstalledVersion = new FakeMigration("7.2.0");
+    const beyondInstalledVersion = new FakeMigration("7.3.0");
+    const installedSpy = spyOn(toInstalledVersion, "upgrade").and.callThrough();
+    const beyondSpy = spyOn(beyondInstalledVersion, "upgrade").and.callThrough();
+    spyOn(service, "getDesktopRegisteredMigrations").and.returnValue([toInstalledVersion, beyondInstalledVersion]);
+
+    // When
+    service.applyUpgrades("7.0.0", "7.2.0").then(
+      () => {
+        // Then
+        expect(installedSpy).toHaveBeenCalledTimes(1);
+        expect(beyondSpy).not.toHaveBeenCalled();
+        done();
+      },
+      error => done.fail(error)
+    );
+  });
+
   it("should apply upgrades with recalculation programmed", done => {
     // Given
     const activitiesCount = 1;

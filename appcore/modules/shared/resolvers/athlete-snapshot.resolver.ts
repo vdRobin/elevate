@@ -12,7 +12,8 @@ export class AthleteSnapshotResolver {
   public athleteModel: AthleteModel;
 
   constructor(athleteModel: AthleteModel) {
-    this.athleteModel = athleteModel ? athleteModel : AthleteModel.DEFAULT_MODEL;
+    // Shallow copy (keeps the prototype) so sorting never rewrites the caller's model or the static default
+    this.athleteModel = _.clone(athleteModel ? athleteModel : AthleteModel.DEFAULT_MODEL);
 
     this.athleteModel.datedAthleteSettings = _.sortBy(
       this.athleteModel.datedAthleteSettings,

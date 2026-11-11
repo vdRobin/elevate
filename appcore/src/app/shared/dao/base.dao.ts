@@ -2,7 +2,6 @@ import { Inject, Injectable } from "@angular/core";
 import { CollectionDef } from "../data-store/collection-def";
 import { DataStore } from "../data-store/data-store";
 import { ElevateException } from "@elevate/shared/exceptions/elevate.exception";
-import { NotImplementedException } from "@elevate/shared/exceptions/not-implemented.exception";
 
 @Injectable()
 export abstract class BaseDao<T> {
@@ -70,7 +69,7 @@ export abstract class BaseDao<T> {
   }
 
   public removeMany(docs: T[], waitSaveDrained: boolean = false): Promise<void> {
-    throw new NotImplementedException("BaseDao::removeMany"); // TODO !!
+    return this.dataStore.removeMany(this.collectionDef, docs, waitSaveDrained);
   }
 
   public removeById(id: number | string, waitSaveDrained: boolean = false): Promise<void> {

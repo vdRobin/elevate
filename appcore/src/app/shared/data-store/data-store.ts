@@ -9,8 +9,7 @@ import semver from "semver/preload";
 import { environment } from "../../../environments/environment";
 
 export enum DbEvent {
-  LOADED,
-  SAVED
+  LOADED
 }
 
 export abstract class DataStore<T extends {}> {
@@ -129,7 +128,8 @@ export abstract class DataStore<T extends {}> {
 
     // If doc is missing then save and return default value
     if (!doc) {
-      const insertedDefaultDoc = collection.insert(defaultStorageValue);
+      // Insert a copy: Loki stamps $loki/meta on what it inserts, and DAO defaults are shared objects
+      const insertedDefaultDoc = collection.insert(_.cloneDeep(defaultStorageValue));
       return Promise.resolve(insertedDefaultDoc);
     }
 
@@ -209,6 +209,12 @@ export abstract class DataStore<T extends {}> {
 
   public remove(collectionDef: CollectionDef<T>, doc: T, waitSaveDrained: boolean): Promise<void> {
     this.resolveCollection(collectionDef).remove(doc);
+
+    return this.persist(waitSaveDrained);
+  }
+
+  public removeMany(collectionDef: CollectionDef<T>, docs: T[], waitSaveDrained: boolean): Promise<void> {
+    this.resolveCollection(collectionDef).remove(docs as (T & LokiObj)[]);
 
     return this.persist(waitSaveDrained);
   }

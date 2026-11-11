@@ -102,6 +102,22 @@ describe("FitnessService", () => {
   });
 
   describe("prepare fitness activities", () => {
+    it("should reject when activities can't be fetched", done => {
+      // Given
+      const fetchError = new Error("Database unavailable");
+      spyOn(activityService, "fetch").and.returnValue(Promise.reject(fetchError));
+
+      // When
+      fitnessService.prepare(fitnessTrendConfigModel, powerMeterEnable, swimEnable).then(
+        () => done.fail("Should have been rejected"),
+        error => {
+          // Then
+          expect(error).toBe(fetchError);
+          done();
+        }
+      );
+    });
+
     it("should prepare fitness activities (only heart rate based activities) w/ TOGGLE_POWER_METER=OFF & TOGGLE_SWIM=OFF & CONFIG_HR_MODE=TRIMP", done => {
       // Given
       const expectedFitnessPreparedActivitiesLength = 3;
