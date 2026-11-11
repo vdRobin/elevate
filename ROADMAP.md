@@ -41,7 +41,7 @@ Exit criterion: CI is green on `main`. Met on 2026-11-11 (run 43087325667).
 | done (#15) | `fix/disable-upstream-telemetry` | F1, F2, S2 (C8 becomes moot) | Add `sentryDsn: null` and `backendBaseUrl: null` to the desktop environments. Skip `Sentry.init` when the DSN is null, and drop names and OS identifiers from the Sentry context. The fork has no crash reporting, so the DSN stays null. Make `MachineService.checkIn`, `DesktopInsightsService.registerActivities` and `MapTokenService` no-ops when the backend URL is null. |
 | done (#17) | `fix/fork-identity` | F3, F4, F5 | Give the fork its own `appId` and `productName`: the desktop app is **Elevator** (`com.vdrobin.elevate`), with its data in its own folder (`~/.config/Elevator` on Linux). Point `publish.owner` and `repository.url` (root and desktop `package.json`) at `vdRobin/elevate`, since the fork publishes its own releases and installed builds must never update to an upstream release. Fork tags must sort above the upstream version they replace (for example `7.3.0`). Keep credit to the original author in LICENSE and About. |
 | done (#16) | `fix/remove-upstream-links` | F7 | Remove the Help FAQ fetched from the upstream docs repo (`help.component.ts`), the Discord link (`report.component.ts`) and the Donate/PayPal page (`donate.component.ts`), with their menu entries and routes. F6 is handled by Maps track B1. |
-| in review | `ci/release-on-tag` | — | GitHub Actions job on a tag pushed on `main`: build the Linux AppImage (`build:package:linux`) and publish a GitHub release with `latest-linux.yml`, so electron-updater finds it. Needs Phase 0 CI and `fix/fork-identity`. Bump the version to `7.3.0` for the first fork release, and switch the Linux target from `deb` (the current `build.linux.target`) to `AppImage`. |
+| done (#29) | `ci/release-on-tag` | — | GitHub Actions job on a tag pushed on `main`: build the Linux AppImage (`build:package:linux`) and publish a GitHub release with `latest-linux.yml`, so electron-updater finds it. Needs Phase 0 CI and `fix/fork-identity`. Bump the version to `7.3.0` for the first fork release, and switch the Linux target from `deb` (the current `build.linux.target`) to `AppImage`. |
 
 ## Phase 2: Data safety and security
 
@@ -49,8 +49,8 @@ One small pull request per line, each with the regression spec named in the cata
 
 | Status | Branch | Items | Change |
 |--------|--------|-------|--------|
-| in review | `fix/recalc-lock` | D1 | Reset `isRecalculating` and emit `ended` when recalculation fails. |
-| open | `fix/sync-complete-catch` | D4, C1, C6 | Release the syncing state when saving fails; null check for fast sync with an empty database; tag errors with the current connector. |
+| done (#34) | `fix/recalc-lock` | D1 | Reset `isRecalculating` and emit `ended` when recalculation fails. |
+| done (#35) | `fix/sync-complete-catch` | D4, C1, C6 | Release the syncing state when saving fails; null check for fast sync with an empty database; tag errors with the current connector. |
 | open | `fix/backup-errors` | D5 | Error the backup progress subject on IPC or disk failures. |
 | open | `fix/atomic-restore` | D2 | Stage the restore in a fresh in-memory Loki and swap only when complete. |
 | open | `fix/worker-crash` | D6 | Handle worker `error` and non-zero `exit` events in `desktop/src/worker-service.ts`. |
