@@ -1,7 +1,6 @@
 import { inject, singleton } from "tsyringe";
 import { Logger } from "../logger";
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from "axios";
-import https from "https";
 import * as rax from "retry-axios";
 import tunnel from "https-proxy-agent";
 
@@ -18,9 +17,9 @@ export class HttpClient {
   }
 
   private createHttpClient(proxyConfig?: { host: string; port: number }): void {
-    // Create axios with proxy config
+    // Create axios with proxy config. Without a proxy, keep Node's default agent: it verifies TLS certificates.
     this.axios = axios.create({
-      httpsAgent: proxyConfig ? new tunnel.HttpsProxyAgent(proxyConfig) : new https.Agent({ rejectUnauthorized: false })
+      httpsAgent: proxyConfig ? new tunnel.HttpsProxyAgent(proxyConfig) : undefined
     });
 
     // Configure retry on failures

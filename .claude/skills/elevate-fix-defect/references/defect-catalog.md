@@ -57,7 +57,7 @@ The fork inherits endpoints and identifiers that belong to the original author. 
 | S2 | fixed (#15) | `appcore/src/app/desktop/machine/machine.service.ts` `checkIn` | Sends the full `AthleteModel` (names, birth date, physiology). | Covered by F2 for the fork. If a backend is kept, send only fields it needs. |
 | S3 | open | `StravaConnectorInfo` in IndexedDB; `machineToken` in `localStorage` | Secrets stored unencrypted in the renderer profile. | Move secrets to main and encrypt with Electron `safeStorage`; keep only a flag in the renderer. Same pattern as the AI key in the `elevate-ai-assistant` skill. |
 | S4 | open | `appcore/src/app/shared/data-store/data-store.ts:309` | `window.db` exposed in production. | Gate on `!environment.production`. |
-| S5 | open | `desktop/src/clients/http.client.ts:23` | Without a proxy, the HTTPS agent is created with `rejectUnauthorized: false`, so certificate verification is off for every request from main (Strava API, GitHub releases, backend). Reported upstream as #1250. | Use the default agent (drop the `https.Agent` option) when no proxy is configured. |
+| S5 | fixed (`fix/tls-verification`) | `desktop/src/clients/http.client.ts:23` | Without a proxy, the HTTPS agent is created with `rejectUnauthorized: false`, so certificate verification is off for every request from main (Strava API, GitHub releases, backend). Reported upstream as #1250. | Use the default agent (drop the `https.Agent` option) when no proxy is configured. |
 
 ## P2 Correctness
 
