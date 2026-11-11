@@ -265,7 +265,7 @@ describe("UpdateHandler", () => {
       });
     });
 
-    it("should detect Linux Deb update", done => {
+    it("should detect Linux AppImage update", done => {
       // Given
       const platform = Platform.LINUX;
       const arch = Arch.X64;
@@ -276,7 +276,10 @@ describe("UpdateHandler", () => {
           tag_name: "7.2.0",
           assets: [
             {
-              browser_download_url: `https://url.com/7.2.0/Elevate-7.2.0.deb`
+              browser_download_url: `https://url.com/7.2.0/Elevator-7.2.0.deb`
+            },
+            {
+              browser_download_url: `https://url.com/7.2.0/Elevator-7.2.0.AppImage`
             },
             {
               browser_download_url: `https://url.com/7.2.0/Elevate-7.2.0.dmg`
@@ -294,7 +297,7 @@ describe("UpdateHandler", () => {
 
       // Then
       promise.then((updateNotify: StaticUpdateNotify) => {
-        expect(updateNotify.downloadUrl).toMatch("Elevate-7.2.0.deb");
+        expect(updateNotify.downloadUrl).toMatch("Elevator-7.2.0.AppImage");
         expect(updateNotify.isAutoUpdatable).toBeFalsy();
         done();
       });
@@ -679,6 +682,26 @@ describe("UpdateHandler", () => {
         expect(updateNotify.downloadUrl).toEqual(expectedAsset.browser_download_url);
         done();
       });
+    });
+  });
+
+  describe("Auto-updatable platforms", () => {
+    it("should auto-update Windows", () => {
+      expect(UpdateHandler.isAutoUpdatable(Platform.WINDOWS, {})).toBe(true);
+    });
+
+    it("should not auto-update MacOS", () => {
+      expect(UpdateHandler.isAutoUpdatable(Platform.MACOS, {})).toBe(false);
+    });
+
+    it("should auto-update Linux when running from an AppImage", () => {
+      expect(UpdateHandler.isAutoUpdatable(Platform.LINUX, { APPIMAGE: "/home/me/Elevator-7.3.0.AppImage" })).toBe(
+        true
+      );
+    });
+
+    it("should not auto-update Linux when not running from an AppImage", () => {
+      expect(UpdateHandler.isAutoUpdatable(Platform.LINUX, {})).toBe(false);
     });
   });
 });

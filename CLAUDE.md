@@ -74,6 +74,7 @@ Git hooks (`core.hooksPath=.husky`, set by root `npm install` via `scripts/git-h
 - Make every change on that branch, push it to `origin` and open a pull request against the fork, since `gh` otherwise targets upstream: `gh pr create --repo vdRobin/elevate --base main`. Pull requests are Rebase-merged, then the branch is deleted.
 - **Never merge anything into `main` yourself**: no merging or rebasing into `main`, no commits or pushes to `main`, no `gh pr merge`. Open the pull request and leave the merge to the user.
 - Releases are tags on `main` in upstream's format (`7.2.3`, `7.3.0-beta.1`). A fix for a released version is an ordinary branch off `main` followed by a new tag.
+- To release: bump the version with `npm version X.Y.Z --no-git-tag-version --ignore-scripts` in the root, `appcore/`, `desktop/` and `webextension/` (plus `webextension/manifest.json`) in a pull request; once merged, tag that commit on `main` and push the tag. `.github/workflows/release.yml` checks the tag matches `desktop/package.json` and is on `main`, then publishes the Linux AppImage and `latest-linux.yml` as a GitHub release (a prerelease for tags with a `-`). Pushing a tag publishes a public release: ask before doing it.
 - Upstream (`upstream` remote) still uses git-flow on `develop`. Bring its changes in on a branch (`git fetch upstream && git switch -c chore/sync-upstream origin/main && git merge upstream/develop`) and merge that pull request with a merge commit, not a squash, so later upstream merges keep a common ancestor.
 
 ## Big-picture architecture

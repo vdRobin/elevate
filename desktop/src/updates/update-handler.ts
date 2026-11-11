@@ -64,12 +64,23 @@ export class UpdateHandler implements IpcListener {
   private static readonly PLATFORM_FILE_PATTERN_MAP = new Map<Platform, (arch: Arch) => string>([
     [Platform.WINDOWS, arch => (arch ? `.*-${arch}.exe$` : `.exe$`)],
     [Platform.MACOS, arch => (arch ? `.*-(${arch}|universal).dmg$` : `.dmg$`)],
-    [Platform.LINUX, arch => (arch ? `.*-${arch}.deb$` : `.deb$`)]
+    [Platform.LINUX, arch => (arch ? `.*-${arch}.AppImage$` : `.AppImage$`)]
   ]);
 
   private autoUpdater: AppUpdater;
   private autoUpdateNotify$: Subject<AutoUpdateNotify>;
   private autoUpdateQuitInstall: boolean;
+
+  /**
+   * Linux builds update themselves only when running from an AppImage: electron-updater replaces the file
+   * that the APPIMAGE environment variable points to. Other Linux runs fall back to a manual download.
+   */
+  public static isAutoUpdatable(platform: Platform, env: NodeJS.ProcessEnv = process.env): boolean {
+    if (platform === Platform.LINUX) {
+      return !!env.APPIMAGE;
+    }
+    return UpdateHandler.PLATFORM_AUTO_UPDATABLE_MAP.get(platform);
+  }
 
   private static getGithubReleasesApiEndpoint(repoUrl: string): string {
     // Find out the short repo name from repo url
@@ -116,7 +127,7 @@ export class UpdateHandler implements IpcListener {
 
   public updateApp(acceptPreReleases: boolean): Promise<UpdateNotify> {
     return this.appService.getPlatform().then(platform => {
-      const autoUpdatablePlatform = UpdateHandler.PLATFORM_AUTO_UPDATABLE_MAP.get(platform);
+      const autoUpdatablePlatform = UpdateHandler.isAutoUpdatable(platform);
 
       this.logger.info(
         `Update app requested: platform=${platform}; autoUpdatable=${autoUpdatablePlatform}; acceptPreReleases=${acceptPreReleases}`
@@ -176,7 +187,7 @@ export class UpdateHandler implements IpcListener {
 
   public checkForUpdate(acceptPreReleases: boolean): Promise<UpdateNotify> {
     return this.appService.getPlatform().then(platform => {
-      const autoUpdatablePlatform = UpdateHandler.PLATFORM_AUTO_UPDATABLE_MAP.get(platform);
+      const autoUpdatablePlatform = UpdateHandler.isAutoUpdatable(platform);
 
       this.logger.info(
         `Check for update requested: platform=${platform}; autoUpdatablePlatform=${autoUpdatablePlatform}; acceptPreReleases=${acceptPreReleases}`
@@ -219,7 +230,7 @@ export class UpdateHandler implements IpcListener {
       const release = platformReleases[0].release;
       const asset = platformReleases[0].asset;
 
-      const autoUpdatablePlatform = UpdateHandler.PLATFORM_AUTO_UPDATABLE_MAP.get(platform);
+      const autoUpdatablePlatform = UpdateHandler.isAutoUpdatable(platform);
       let updateNotify: UpdateNotify;
 
       if (autoUpdatablePlatform) {
