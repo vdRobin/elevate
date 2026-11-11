@@ -32,6 +32,7 @@ export class FitnessService {
           // Check if provided activities are not empty
           if (_.isEmpty(activities) || activities.length === 0) {
             reject(new AppError(AppError.FT_NO_ACTIVITIES, "No activities available to generate the fitness trend"));
+            return;
           }
 
           activities = this.filterActivities(
@@ -48,6 +49,7 @@ export class FitnessService {
                 "No activities available. They all have been filtered. Unable to generate the fitness trend."
               )
             );
+            return;
           }
 
           const fitnessPreparedActivities: FitnessPreparedActivityModel[] = [];
@@ -149,7 +151,7 @@ export class FitnessService {
           });
 
           resolve(fitnessPreparedActivities);
-        });
+        }, reject);
       }
     );
   }
