@@ -493,6 +493,71 @@ describe("ExtensionSyncService", () => {
     );
   });
 
+  it("should not wipe current data when the backup athlete settings are invalid", done => {
+    // Given: two dated athlete settings with the same "since" date
+    athleteModel.datedAthleteSettings = [
+      new DatedAthleteSettings("2018-05-10", new AthleteSettings(200, 50, null, 190, null, null, 75)),
+      new DatedAthleteSettings("2018-05-10", new AthleteSettings(195, null, null, 150, null, null, 76)),
+      new DatedAthleteSettings(null, new AthleteSettings(190, 65, null, 110, null, null, 78))
+    ];
+    spyOn(DataStore, "getMinBackupVersion").and.returnValue("1.0.0");
+    const extensionBackupModel: ExtensionBackupModel = {
+      activities: ACTIVITIES_FIXTURES as any[],
+      athleteModel: athleteModel,
+      syncDateTime: new SyncDateTime(99),
+      pluginVersion: "1.0.0"
+    };
+    const activityServiceClearSpy = spyOn(extensionSyncService.activityService, "clear").and.returnValue(
+      Promise.resolve()
+    );
+    const athleteServiceClearSpy = spyOn(extensionSyncService.athleteService, "clear").and.returnValue(
+      Promise.resolve()
+    );
+    const syncDateTimeClearSpy = spyOn(extensionSyncService.syncDateTimeDao, "clear").and.returnValue(
+      Promise.resolve()
+    );
+
+    // When
+    extensionSyncService.restore(extensionBackupModel).then(
+      () => done.fail("Restore should have been rejected"),
+      error => {
+        // Then
+        expect(error).toBeDefined();
+        expect(activityServiceClearSpy).not.toHaveBeenCalled();
+        expect(athleteServiceClearSpy).not.toHaveBeenCalled();
+        expect(syncDateTimeClearSpy).not.toHaveBeenCalled();
+        done();
+      }
+    );
+  });
+
+  it("should not wipe current data when the backup activities have duplicate ids", done => {
+    // Given
+    spyOn(DataStore, "getMinBackupVersion").and.returnValue("1.0.0");
+    const activities = _.cloneDeep(ACTIVITIES_FIXTURES as any[]).slice(0, 3);
+    activities[2].id = activities[0].id;
+    const extensionBackupModel: ExtensionBackupModel = {
+      activities: activities,
+      athleteModel: null,
+      syncDateTime: new SyncDateTime(99),
+      pluginVersion: "1.0.0"
+    };
+    const activityServiceClearSpy = spyOn(extensionSyncService.activityService, "clear").and.returnValue(
+      Promise.resolve()
+    );
+
+    // When
+    extensionSyncService.restore(extensionBackupModel).then(
+      () => done.fail("Restore should have been rejected"),
+      error => {
+        // Then
+        expect(error).toContain("duplicate ids");
+        expect(activityServiceClearSpy).not.toHaveBeenCalled();
+        done();
+      }
+    );
+  });
+
   it("should remove athlete activities", done => {
     // Given
     const syncDateTimeDaoSpy = spyOn(extensionSyncService.syncDateTimeDao, "clear").and.returnValue(Promise.resolve());

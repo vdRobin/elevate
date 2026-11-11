@@ -188,7 +188,20 @@ export class ExtensionSyncService extends SyncService<SyncDateTime> {
       );
     }
 
-    return this.clearActivities()
+    // Validate everything that can be rejected before wiping the current data
+    const activityIds = extensionBackupModel.activities.map(activity => activity.id);
+    if (activityIds.some(id => id === undefined || id === null) || _.uniq(activityIds).length !== activityIds.length) {
+      return Promise.reject(
+        "Activities in provided backup file have missing or duplicate ids. Nothing has been restored."
+      );
+    }
+
+    const validateAthleteModel = _.isEmpty(extensionBackupModel.athleteModel)
+      ? Promise.resolve()
+      : this.athleteService.validate(extensionBackupModel.athleteModel.datedAthleteSettings);
+
+    return validateAthleteModel
+      .then(() => this.clearActivities())
       .then(() => {
         return this.athleteService.clear();
       })

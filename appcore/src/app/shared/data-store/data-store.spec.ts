@@ -1,4 +1,5 @@
 import { TestBed } from "@angular/core/testing";
+import Loki from "lokijs";
 import { CollectionDef } from "./collection-def";
 import { DataStore } from "./data-store";
 import { ConsoleLoggerService } from "../services/logging/console-logger.service";
@@ -358,6 +359,28 @@ describe("DataStore", () => {
         expect(results[0].name).toEqual(expectedName);
         done();
       });
+  });
+
+  it("should return the reloaded data after the database is reloaded from storage", async () => {
+    // Given: a document read once (so its collection is tracked), with changes flushed like the extension store does
+    await dataStore.insert(collectionDef, { id: "01", name: "Before reload" }, true);
+    dataStore.resolveCollection(collectionDef).flushChanges();
+
+    // And: another app context stored a different database
+    const storedDb = new Loki(dataStore.db.filename);
+    storedDb.addCollection<FakeDoc>(collectionDef.name, { unique: ["id"] }).insert({ id: "02", name: "After reload" });
+    (dataStore.db.persistenceAdapter as any).hashStore[dataStore.db.filename] = {
+      savecount: 1,
+      lastsave: new Date(),
+      value: storedDb.serialize()
+    };
+
+    // When
+    await dataStore.reload();
+    const docs = await dataStore.find(collectionDef, []);
+
+    // Then
+    expect(docs.map(doc => doc.name)).toEqual(["After reload"]);
   });
 
   it("should clear docs", done => {

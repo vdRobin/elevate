@@ -11,7 +11,10 @@ export class ExtensionLoadService extends AppLoadService {
     super(dataStore);
   }
 
+  /**
+   * Wait for the database to be loaded, and keep the splash screen for a minimum time.
+   */
   public loadApp(): Promise<void> {
-    return sleep(this.SPLASH_SCREEN_MIN_TIME_DISPLAYED);
+    return Promise.all([super.loadApp(), sleep(this.SPLASH_SCREEN_MIN_TIME_DISPLAYED)]).then(() => undefined);
   }
 }
