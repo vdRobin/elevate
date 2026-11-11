@@ -290,6 +290,8 @@ export abstract class DataStore<T extends {}> {
         if (err) {
           reject(err);
         } else {
+          // Loading replaces every collection object: forget the ones tracked before the reload
+          this.COLLECTIONS_MAP.clear();
           resolve();
         }
       });
