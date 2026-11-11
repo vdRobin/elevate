@@ -23,6 +23,7 @@ import { AppService } from "../../../shared/services/app-service/app.service";
 import { AppRoutes } from "../../../shared/models/app-routes";
 import { StravaConnectorInfoService } from "../../../shared/services/strava-connector-info/strava-connector-info.service";
 import { ConnectorType } from "@elevate/shared/sync/connectors/connector-type.enum";
+import { AppPackage } from "@elevate/shared/tools/app-package";
 import { StravaConnectorInfo } from "@elevate/shared/sync/connectors/strava-connector-info.model";
 
 class GeneratedStravaApiApplication {
@@ -218,7 +219,9 @@ export class StravaConnectorComponent extends ConnectorsComponent implements OnI
   }
 
   public onHowToSpeedUpSync(): void {
-    this.router.navigate([`/${AppRoutes.help}`], { queryParams: { show: "id:strava-connector-faster-first-sync" } });
+    this.openResourceResolver.openLink(
+      `${AppPackage.getElevateDoc()}Frequently-Asked-Questions/Desktop-App/#how-to-speed-up-the-1st-strava-sync`
+    );
   }
 
   public onClipBoardSaved($event: IClipboardResponse): void {

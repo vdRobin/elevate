@@ -12,7 +12,6 @@ export class Constant {
    * For appcore only
    */
   // Used to indicated if user checked helper before reporting a bug
-  public static readonly SESSION_HELPER_OPENED: string = "SESSION_HELPER_OPENED";
 
   /**
    * For extension only

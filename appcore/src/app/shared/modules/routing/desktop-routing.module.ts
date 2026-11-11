@@ -48,10 +48,6 @@ const routes: Routes = [
     loadChildren: () => import("../../../desktop/connectors/connectors.module").then(module => module.ConnectorsModule)
   },
   {
-    path: AppRoutes.donate,
-    loadChildren: () => import("../../../donate/donate.module").then(module => module.DonateModule)
-  },
-  {
     path: AppRoutes.releasesNotes,
     loadChildren: () =>
       import("../../../releases-notes/releases-notes.module").then(module => module.ReleasesNotesModule)
@@ -66,10 +62,6 @@ const routes: Routes = [
       import("../../../advanced-menu/desktop/desktop-advanced-menu.module").then(
         module => module.DesktopAdvancedMenuModule
       )
-  },
-  {
-    path: AppRoutes.help,
-    loadChildren: () => import("../../../help/help.module").then(module => module.HelpModule)
   },
   {
     path: "",
