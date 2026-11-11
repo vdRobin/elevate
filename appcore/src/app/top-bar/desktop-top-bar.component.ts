@@ -15,7 +15,7 @@ import { Platform } from "@elevate/shared/enums/platform.enum";
         (dblclick)="isMaximized ? onUnMaximiseAppClicked() : onMaximizeAppClicked()"
       ></div>
       <div class="top-bar-traffic-light-zone"><!-- Empty div used for flex space between behavior --></div>
-      <span class="top-bar-title mat-caption">Elevate Sports App</span>
+      <span class="top-bar-title mat-caption">Elevator</span>
       <div class="top-bar-traffic-light-zone">
         <ng-container *ngIf="!isMacOs">
           <button mat-icon-button (click)="onMinimizeAppClicked()">

@@ -24,9 +24,9 @@
     "build:package:win": "npm run build:prod && npm run package:win",
     "build:package:linux": "npm run build:prod && npm run package:linux",
     "build:package:mac": "npm run build:prod && npm run package:mac",
-    "build:package:win:dev": "npm run build:package:win -- -- -c.extraMetadata.name=elevate-sports-app-dev -c.appId=elevate-sports-app-dev -c.productName=\"Elevate Dev\" -c.directories.buildResources=build-dev && npm run open:package-folder",
-    "build:package:linux:dev": "npm run build:package:linux -- -- -c.extraMetadata.name=elevate-sports-app-dev -c.appId=elevate-sports-app-dev -c.productName=\"Elevate Dev\" -c.directories.buildResources=build-dev && npm run open:package-folder",
-    "build:package:mac:dev": "npm run build:package:mac -- -- -c.extraMetadata.name=elevate-sports-app-dev -c.appId=elevate-sports-app-dev -c.productName=\"Elevate Dev\" -c.directories.buildResources=build-dev && npm run open:package-folder",
+    "build:package:win:dev": "npm run build:package:win -- -- -c.extraMetadata.name=elevate-sports-app-dev -c.appId=com.vdrobin.elevate.dev -c.productName=\"Elevator Dev\" -c.directories.buildResources=build-dev && npm run open:package-folder",
+    "build:package:linux:dev": "npm run build:package:linux -- -- -c.extraMetadata.name=elevate-sports-app-dev -c.appId=com.vdrobin.elevate.dev -c.productName=\"Elevator Dev\" -c.directories.buildResources=build-dev && npm run open:package-folder",
+    "build:package:mac:dev": "npm run build:package:mac -- -- -c.extraMetadata.name=elevate-sports-app-dev -c.appId=com.vdrobin.elevate.dev -c.productName=\"Elevator Dev\" -c.directories.buildResources=build-dev && npm run open:package-folder",
     "open:package-folder": "node -e \"require('open-in-explorer')('package');\"",
     "start": "npm run watch",
     "test": "npm run build:metadata && node ./node_modules/jest/bin/jest.js --silent --coverage",
@@ -43,7 +43,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/thomaschampagne/elevate"
+    "url": "https://github.com/vdRobin/elevate"
   },
   "author": {
     "name": "Thomas Champagne",
@@ -111,8 +111,8 @@
     "typescript": "^4.9.5"
   },
   "build": {
-    "appId": "com.elevate.sports.app",
-    "productName": "Elevate",
+    "appId": "com.vdrobin.elevate",
+    "productName": "Elevator",
     "directories": {
       "output": "./package/"
     },
@@ -127,7 +127,7 @@
     ],
     "publish": {
       "provider": "github",
-      "owner": "thomaschampagne",
+      "owner": "vdRobin",
       "repo": "elevate",
       "vPrefixedTagName": false
     },
