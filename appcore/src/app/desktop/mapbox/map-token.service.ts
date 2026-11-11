@@ -35,6 +35,8 @@ export class MapTokenService extends MachineAuthenticatedService {
       if (userSettings.mapToken) {
         this.logger.debug("Use user defined map token");
         return Promise.resolve(userSettings.mapToken.trim());
+      } else if (!MachineService.isBackendEnabled()) {
+        return Promise.resolve(this.getFallbackToken());
       } else {
         return this.getAuthenticated(MapTokenService.MAP_TOKEN_ENDPOINT)
           .toPromise()
@@ -44,17 +46,17 @@ export class MapTokenService extends MachineAuthenticatedService {
           })
           .catch(err => {
             this.logger.error(err.message);
-            this.logger.debug("Use fallback map token");
-
-            // Get a random fallback token
-            const fallbackTokenIndex = _.random(0, MapTokenService.FALLBACK_TOKENS.length - 1);
-
-            // Decode and return token
-            const fallbackToken = atob(MapTokenService.FALLBACK_TOKENS[fallbackTokenIndex]);
-
-            return Promise.resolve(fallbackToken);
+            return Promise.resolve(this.getFallbackToken());
           });
       }
     });
+  }
+
+  private getFallbackToken(): string {
+    this.logger.debug("Use fallback map token");
+
+    // Get a random fallback token, then decode it
+    const fallbackTokenIndex = _.random(0, MapTokenService.FALLBACK_TOKENS.length - 1);
+    return atob(MapTokenService.FALLBACK_TOKENS[fallbackTokenIndex]);
   }
 }

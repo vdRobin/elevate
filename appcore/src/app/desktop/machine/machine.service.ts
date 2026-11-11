@@ -34,10 +34,22 @@ export class MachineService {
   ) {}
 
   /**
+   * The Elevate backend (machine check-in, insights, map token) is used only when a base url is configured.
+   * The fork configures none, so nothing is sent.
+   */
+  public static isBackendEnabled(): boolean {
+    return !!environment.backendBaseUrl;
+  }
+
+  /**
    * Authenticate machine and provide JWT token
    */
   public auth(): Subject<void> {
     const authentication$ = new Subject<void>();
+    if (!MachineService.isBackendEnabled()) {
+      setTimeout(() => authentication$.error(new Error("No backend configured")));
+      return authentication$;
+    }
     this.runtimeInfoService.getMachineCredentials().then(machineCredentials => {
       this.httpClient
         .post(
@@ -87,6 +99,10 @@ export class MachineService {
   }
 
   public checkIn(): void {
+    if (!MachineService.isBackendEnabled()) {
+      return;
+    }
+
     Promise.all([this.runtimeInfoService.get(), this.athleteService.fetch(), this.stravaConnectorInfoService.fetch()])
       .then(results => {
         const [runtimeInfo, athleteModel, stravaConnectorInfo] =
