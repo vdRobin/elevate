@@ -127,7 +127,10 @@ export class DesktopRecalculateActivitiesBarComponent extends RecalculateActivit
         this.statusText = moment(notification.activity.startTime).format("ll") + ": " + notification.activity.name;
 
         if (notification.ended) {
-          this.statusText = "Recalculation done.";
+          this.statusText =
+            notification.currentlyProcessed < notification.toProcessCount
+              ? "Recalculation stopped on an error."
+              : "Recalculation done.";
           this.isRecalculating = false;
         } else {
           this.isRecalculating = true;

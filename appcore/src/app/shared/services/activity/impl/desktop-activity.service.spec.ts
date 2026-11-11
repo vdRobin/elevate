@@ -411,5 +411,81 @@ describe("DesktopActivityService", () => {
         }
       );
     });
+    it("should release the recalculation lock and notify the end when an activity fails", done => {
+      // Given
+      const userSettings: DesktopUserSettings = DesktopUserSettings.DEFAULT_MODEL;
+      const activities = ["1111", "2222", "3333"].map(id => {
+        const activity = new Activity();
+        activity.id = id;
+        return activity;
+      });
+
+      spyOn(desktopActivityService, "recalculateSingle").and.callFake((activity: Activity) => {
+        return activity.id === "2222" ? Promise.reject(new Error("Compute failed")) : Promise.resolve(activity);
+      });
+      spyOn(desktopActivityService, "verifyActivitiesWithSettingsLacking").and.stub();
+
+      const notifications: ActivityRecalculateNotification[] = [];
+      desktopActivityService.recalculate$.subscribe(notification => notifications.push(notification));
+
+      // When
+      desktopActivityService.recalculate(activities, userSettings).then(
+        () => done.fail("Recalculation should have been rejected"),
+        () => {
+          // Then
+          expect(desktopActivityService.isRecalculating).toBe(false);
+          const lastNotification = notifications[notifications.length - 1];
+          expect(notifications.length).toEqual(2);
+          expect(notifications[0].started).toBe(true);
+          expect(lastNotification.ended).toBe(true);
+          expect(lastNotification.currentlyProcessed).toEqual(1);
+          expect(lastNotification.toProcessCount).toEqual(3);
+
+          // A next recalculation is accepted
+          desktopActivityService.recalculate([], userSettings).then(
+            () => done(),
+            err => done.fail(err)
+          );
+        }
+      );
+    });
+
+    it("should release the recalculation lock and notify the end when an activity from ids fails", done => {
+      // Given
+      const userSettings: DesktopUserSettings = DesktopUserSettings.DEFAULT_MODEL;
+      const activityIds = ["1111", "2222", "3333"];
+
+      spyOn(desktopActivityService, "getById").and.callFake(id => {
+        const activity = new Activity();
+        activity.id = id;
+        return Promise.resolve(activity);
+      });
+      spyOn(desktopActivityService, "recalculateSingle").and.callFake((activity: Activity) => {
+        return activity.id === "2222" ? Promise.reject(new Error("Compute failed")) : Promise.resolve(activity);
+      });
+      spyOn(desktopActivityService, "verifyActivitiesWithSettingsLacking").and.stub();
+
+      const notifications: ActivityRecalculateNotification[] = [];
+      desktopActivityService.recalculate$.subscribe(notification => notifications.push(notification));
+
+      // When
+      desktopActivityService.recalculateFromIds(activityIds, userSettings).then(
+        () => done.fail("Recalculation should have been rejected"),
+        () => {
+          // Then
+          expect(desktopActivityService.isRecalculating).toBe(false);
+          const lastNotification = notifications[notifications.length - 1];
+          expect(lastNotification.ended).toBe(true);
+          expect(lastNotification.currentlyProcessed).toEqual(1);
+          expect(lastNotification.activity.id).toEqual("2222");
+
+          // A next recalculation is accepted
+          desktopActivityService.recalculateFromIds([], userSettings).then(
+            () => done(),
+            err => done.fail(err)
+          );
+        }
+      );
+    });
   });
 });
