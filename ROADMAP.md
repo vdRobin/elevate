@@ -51,19 +51,21 @@ One small pull request per line, each with the regression spec named in the cata
 |--------|--------|-------|--------|
 | done (#34) | `fix/recalc-lock` | D1 | Reset `isRecalculating` and emit `ended` when recalculation fails. |
 | done (#35) | `fix/sync-complete-catch` | D4, C1, C6 | Release the syncing state when saving fails; null check for fast sync with an empty database; tag errors with the current connector. |
-| open | `fix/backup-errors` | D5 | Error the backup progress subject on IPC or disk failures. |
-| open | `fix/atomic-restore` | D2 | Stage the restore in a fresh in-memory Loki and swap only when complete. |
-| in review | `fix/worker-crash` | D6 | Handle worker `error` and non-zero `exit` events in `desktop/src/worker-service.ts`. |
-| open | `fix/tls-verification` | S5 | Remove `rejectUnauthorized: false` from `http.client.ts`. |
-| open | `fix/escape-error-dialogs` | S1, S4 | Add an `escapeHtml` helper in `modules/shared/tools` and a CSP meta tag in `appcore/src/index.html`; gate `window.db` behind `!environment.production`. |
+| done (#38) | `fix/backup-errors` | D5 | Error the backup progress subject on IPC or disk failures. |
+| done (#41) | `fix/atomic-restore` | D2 | Stage the restore in memory, validate it on a throwaway Loki, and replace the live data only when every announced document has been read. |
+| done (#37) | `fix/worker-crash` | D6 | Handle worker `error` and `exit` events in `desktop/src/worker-service.ts`. |
+| done (#39) | `fix/tls-verification` | S5 | Remove `rejectUnauthorized: false` from `http.client.ts`. |
+| done (#40) | `fix/escape-error-dialogs` | S1, S4 | Add an `escapeHtml` helper in `modules/shared/tools` and escape dynamic text in trusted dialog HTML; gate `window.db` behind `!environment.production`. |
+| open | `fix/csp` | S1 | CSP meta tag in `appcore/src/index.html` (split from `fix/escape-error-dialogs`). Shared by both targets; allow Google Fonts and Mapbox GL's blob workers and tiles. Needs a manual run of the desktop app with the console open (map, fonts, sync, backup) before merge. |
 | open | `fix/extension-restore` | D3, D7, C2 | Keep the extension safe: validate before wiping on restore, invalidate the collection cache on reload, wait for the database `LOADED` event. |
-| open | — | C3, C4, C7, L1–L3 | Small correctness fixes, done alongside nearby work. |
+| open | — | C3, C4, C7, L1–L4 | Small correctness fixes. |
 
 ## Phase 3: Electron upgrade
 
 | Status | Branch | Change |
 |--------|--------|--------|
 | open | `build/electron-upgrade` | Move desktop from Electron 27 to the current supported stable major, with matching `electron-builder` and `electron-updater`, and the same version for appcore's `electron` types. Check `BrowserWindow` options, the preload bridge and `safeStorage` against Electron's breaking-changes list. Test the Linux package: build, launch the AppImage, run a file sync, a backup and a restore. |
+| open | `fix/encrypt-secrets` | S3: move the Strava tokens (`StravaConnectorInfo` in IndexedDB) and other secrets to main, encrypted with Electron `safeStorage`; the renderer keeps only a flag. Same pattern as the AI key in the `elevate-ai-assistant` skill. |
 
 Feature work starts once this phase lands.
 
@@ -71,11 +73,11 @@ Feature work starts once this phase lands.
 
 | Status | Branch | Items | Change |
 |--------|--------|-------|--------|
-| open | `perf/parallel-recalc` | #1108 | Run the per-activity `computeActivity` jobs of a recalculation across a bounded pool of workers in desktop main instead of one at a time. Needs D6 (`fix/worker-crash`) so a crashed worker cannot stall the pool. |
+| open | `perf/parallel-recalc` | #1108 | Recalculate several activities at once. Today the renderer (`DesktopActivityService.recalculate`) sends one `computeActivity` request at a time and main computes it in a new worker: send a bounded number of requests concurrently from the renderer and run them on a bounded worker pool in main. Requests go through `invoke`, so responses stay matched (catalog C5 does not apply). Needs D6 (`fix/worker-crash`) so a crashed worker cannot stall the pool. |
 
 ## Phase 4: Test floor and Angular (alongside the features)
 
-- Specs for backup, restore and sync; run some specs under `extension-target.module`.
+- Run some specs under `extension-target.module` (backup, restore and sync now have desktop specs from Phase 2).
 - Angular 14 → 15 → 16 with `ng update`, one major per pull request (16 drops `ngcc`), keeping NgModules. Replace `toPromise` with `firstValueFrom` on the way.
 - Not planned yet: removing flex-layout, turning on `strict`.
 
@@ -98,9 +100,21 @@ Guide: `.claude/skills/elevate-maps-gpx`.
 | B1 | open | `feat/maplibre-osm` | Replace Mapbox GL with MapLibre GL and a token-free OpenStreetMap-based style in `activity-view-map.component.ts`. Closes F6 and removes the dependency on `MapTokenService` and the upstream backend. Keep the start, end and move markers and the chart-to-map hover sync. |
 | B3 | open | `feat/activities-heatmap` | Map of all activities from the stored `latlng` streams: decode the compressed streams in a worker, downsample, render as a MapLibre heatmap or line layer, and filter by sport and date. |
 
+## Maintenance and open decisions
+
+| Status | Item |
+|--------|------|
+| open | **Target platform.** The release job builds only the Linux AppImage, and the manual checks assume Linux. Decide whether Windows is also a target; if so, add an NSIS build (unsigned) to `release.yml` and a manual Windows run. |
+| open | **First release.** Push the `7.3.0` tag on `main` (publishes a public GitHub release), then a later tag to check that an installed build offers the update (see Verification). |
+| open | **Manual run** of sync, recalculation, backup and restore on the target platform before the Electron upgrade, so regressions from Phase 2 (notably D2) are told apart from the upgrade's. |
+| open | **Dependabot policy.** Close the failing webextension build-tool upgrades (webpack, copy-webpack-plugin, karma-webpack), which the extension does not need, and group routine updates (e.g. weekly, desktop and appcore). |
+| open | **Prune `origin` branches**: stale upstream branches (`snyk-*`, `feature/*`, `master`, `gh-pages`, old Dependabot branches). |
+
 ## Later
 
 Ideas not yet scheduled:
+
+- IPC request ids for main-to-renderer `send` (catalog C5). Only needed if a sync starts issuing concurrent `findActivity`/`findStreams` requests.
 
 - From the Garmin track: file sync when the app starts (A3, upstream #1225, #1244); importing overlapping activities recorded on different devices (A5, #1089); FIT sport mapping for tennis and padel (A6, #1245, #1182) and hiding or implementing the "detect sport type" option (C9).
 - From the Maps track: a GPX route and course viewer with an elevation profile (B2).
