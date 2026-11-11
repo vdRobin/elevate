@@ -6,6 +6,7 @@ import { MatSnackBar } from "@angular/material/snack-bar";
 import { LoggerService } from "../shared/services/logging/logger.service";
 import { GotItDialogComponent } from "../shared/dialogs/got-it-dialog/got-it-dialog.component";
 import { GotItDialogDataModel } from "../shared/dialogs/got-it-dialog/got-it-dialog-data.model";
+import { escapeHtml } from "@elevate/shared/tools/escape-html";
 
 @Injectable({
   providedIn: "root"
@@ -31,7 +32,7 @@ export class ExtensionElevateErrorHandler extends ElevateErrorHandler {
         this.dialog.open(GotItDialogComponent, {
           data: {
             title: `${errorMessage}.`,
-            content: `<pre class="mat-caption">${error.stack}</pre>`
+            content: `<pre class="mat-caption">${escapeHtml(error.stack)}</pre>`
           } as GotItDialogDataModel
         });
       });
