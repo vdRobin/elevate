@@ -9,6 +9,7 @@ import { ZoneImportExportDataModel } from "../zones-import-export-dialog/zone-im
 import { Mode } from "../zones-import-export-dialog/mode.enum";
 import { ZoneDefinitionModel } from "../../shared/models/zone-definition.model";
 import { LoggerService } from "../../shared/services/logging/logger.service";
+import { escapeHtml } from "@elevate/shared/tools/escape-html";
 
 @Component({
   selector: "app-zone-tool-bar",
@@ -68,7 +69,7 @@ export class ZoneToolBarComponent implements OnInit {
 
   public onResetZonesToDefault(): void {
     const data: ConfirmDialogDataModel = {
-      title: "Reset <" + this.zonesService.zoneDefinition.name + "> zones",
+      title: `Reset ${escapeHtml(`<${this.zonesService.zoneDefinition.name}>`)} zones`,
       content: "Are you sure? Previous data will be lost."
     };
 

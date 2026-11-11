@@ -13,6 +13,7 @@ import { ElectronService } from "../desktop/electron/electron.service";
 import { RuntimeInfoService } from "../desktop/machine/runtime-info.service";
 import { RuntimeInfo } from "@elevate/shared/electron/runtime-info";
 import { AthleteModel } from "@elevate/shared/models/athlete/athlete.model";
+import { escapeHtml } from "@elevate/shared/tools/escape-html";
 
 @Injectable({
   providedIn: "root"
@@ -72,13 +73,13 @@ export class DesktopElevateErrorHandler extends ElevateErrorHandler {
       .then(() => {
         const dialogRef = this.dialog.open(ConfirmDialogComponent, {
           data: {
-            title: `Unhandled issue occurred: ${errorMessage}.`,
+            title: `Unhandled issue occurred: ${escapeHtml(errorMessage)}.`,
             content: `
                 <div>
                   <strong>Unfortunatly Elevate experienced the below unhandled issue. <span class="warn-color">If error still blocks the application, you might reset the app using below "Reset app" button (your data will be wiped).</span></strong></br>
                 </div>
                 <div>
-                  <pre class="mat-caption">${error.stack}</pre>
+                  <pre class="mat-caption">${escapeHtml(error.stack)}</pre>
                 </div>
             `,
             cancelText: "Forget",

@@ -34,6 +34,7 @@ import { ElevateSport } from "@elevate/shared/enums/elevate-sport.enum";
 import { Streams } from "@elevate/shared/models/activity-data/streams.model";
 import { Time } from "@elevate/shared/tools/time";
 import { Constant } from "@elevate/shared/constants/constant";
+import { escapeHtml } from "@elevate/shared/tools/escape-html";
 import DesktopUserSettings = UserSettings.DesktopUserSettings;
 
 @Component({
@@ -261,7 +262,7 @@ export class ActivityViewComponent implements OnInit, OnDestroy {
 
   public onDeleteActivity(): void {
     const data: ConfirmDialogDataModel = {
-      title: 'Deleting activity "' + this.activity.name + '"',
+      title: `Deleting activity "${escapeHtml(this.activity.name)}"`,
       content: `Are you sure? You can fetch back this activity through a "Sync all activities"`,
       confirmText: "Delete"
     };

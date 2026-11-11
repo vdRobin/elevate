@@ -305,11 +305,9 @@ export abstract class DataStore<T extends {}> {
       // Broadcast database auto loaded event
       this.dbEvent$.next(DbEvent.LOADED);
 
-      // Allow access to database directly from window for debugging
-      (window as any).db = this.db;
-
-      // Allow access to collection data directly from window for debugging
+      // Allow access to database and collection data directly from window for debugging (dev builds only)
       if (!environment.production) {
+        (window as any).db = this.db;
         (window as any).data = {};
         this.db.collections.forEach(collection => {
           (window as any).data[collection.name] = collection.data;

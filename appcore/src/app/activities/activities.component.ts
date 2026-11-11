@@ -31,6 +31,7 @@ import { UserSettings } from "@elevate/shared/models/user-settings/user-settings
 import NumberColumn = ActivityColumns.NumberColumn;
 import BaseUserSettings = UserSettings.BaseUserSettings;
 import { FieldInfo, Parser as Json2CsvParser } from "json2csv";
+import { escapeHtml } from "@elevate/shared/tools/escape-html";
 
 class Preferences {
   constructor(
@@ -424,7 +425,7 @@ export class ActivitiesComponent implements OnInit, OnDestroy {
 
   public onDeleteActivity(activity: Activity): void {
     const data: ConfirmDialogDataModel = {
-      title: 'Deleting activity "' + activity.name + '"',
+      title: `Deleting activity "${escapeHtml(activity.name)}"`,
       content: `Are you sure? You can fetch back this activity through a "Sync all activities"`,
       confirmText: "Delete"
     };
