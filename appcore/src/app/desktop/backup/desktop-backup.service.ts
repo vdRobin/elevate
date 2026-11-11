@@ -56,65 +56,72 @@ export class DesktopBackupService {
     backupProgress$.next({ file: null, savedDocs: 0, totalDocs: totalDocs });
 
     // Trigger backup init. End is detected when all objects have been written and acknowledged by backup file
-    this.ipcTunnelService.send<IpcMessage, string>(new IpcMessage(Channel.backupInit, targetArchivePath)).then(() => {
-      // Append metadata header as first object of the file
-      const metadata: BackupMetadata = { version: appVersion, totalDocs: totalDocs };
-      const writeMetadataPromise = this.writeObject(metadata, false);
+    this.ipcTunnelService
+      .send<IpcMessage, string>(new IpcMessage(Channel.backupInit, targetArchivePath))
+      .then(() => {
+        // Append metadata header as first object of the file
+        const metadata: BackupMetadata = { version: appVersion, totalDocs: totalDocs };
+        const writeMetadataPromise = this.writeObject(metadata, false);
 
-      // Once metadata header wrote, start sending collection using chunks
-      writeMetadataPromise.then(() => {
-        // Reduce each collection
-        collections
-          .reduce((prevCollectionPromise: Promise<void>, collection: Collection<any>, colIndex: number) => {
-            return prevCollectionPromise.then(() => {
-              // Cut collection in chunks
-              const chunks = _.chunk(collection.data, DesktopBackupService.BACKUP_CHUNK_SIZE);
+        // Once metadata header wrote, start sending collection using chunks
+        return writeMetadataPromise.then(() => {
+          // Reduce each collection
+          return collections
+            .reduce((prevCollectionPromise: Promise<void>, collection: Collection<any>, colIndex: number) => {
+              return prevCollectionPromise.then(() => {
+                // Cut collection in chunks
+                const chunks = _.chunk(collection.data, DesktopBackupService.BACKUP_CHUNK_SIZE);
 
-              this.logger.debug(`Backup "${collection.name}" collection using ${chunks.length} chunk(s)`);
+                this.logger.debug(`Backup "${collection.name}" collection using ${chunks.length} chunk(s)`);
 
-              // Reduce each chunk and send them in tunnel for backup
-              return chunks.reduce((previousPromise: Promise<void>, chunk: LokiObj[], chunkIndex: number) => {
-                return previousPromise.then(() => {
-                  const isLastChunk = collections.length === colIndex + 1 && chunks.length === chunkIndex + 1;
+                // Reduce each chunk and send them in tunnel for backup
+                return chunks.reduce((previousPromise: Promise<void>, chunk: LokiObj[], chunkIndex: number) => {
+                  return previousPromise.then(() => {
+                    const isLastChunk = collections.length === colIndex + 1 && chunks.length === chunkIndex + 1;
 
-                  // Cleanup chunk before sending
-                  chunk = chunk.map(doc => DataStore.cleanDbObject(_.cloneDeep(doc)));
+                    // Cleanup chunk before sending
+                    chunk = chunk.map(doc => DataStore.cleanDbObject(_.cloneDeep(doc)));
 
-                  // Create the chunk with the target collection to be used on restore
-                  const bkpChunk: BackupChunk = { colName: collection.name, chk: chunk };
+                    // Create the chunk with the target collection to be used on restore
+                    const bkpChunk: BackupChunk = { colName: collection.name, chk: chunk };
 
-                  // Send chuck and notify UI!
-                  return this.sendChunk(bkpChunk, isLastChunk).then(() => {
-                    // When chuck saved update saved docs count
-                    savedDocs += bkpChunk.chk.length;
+                    // Send chuck and notify UI!
+                    return this.sendChunk(bkpChunk, isLastChunk).then(() => {
+                      // When chuck saved update saved docs count
+                      savedDocs += bkpChunk.chk.length;
 
-                    // And send backup progress event
-                    backupProgress$.next({
-                      file: null,
-                      savedDocs: savedDocs,
-                      totalDocs: totalDocs
+                      // And send backup progress event
+                      backupProgress$.next({
+                        file: null,
+                        savedDocs: savedDocs,
+                        totalDocs: totalDocs
+                      });
+                      return Promise.resolve();
                     });
-                    return Promise.resolve();
                   });
-                });
-              }, Promise.resolve());
-            });
-          }, Promise.resolve())
-          .then(() => {
-            this.logger.debug(`${totalDocs} documents have been sent and acknowledged for backup`);
+                }, Promise.resolve());
+              });
+            }, Promise.resolve())
+            .then(() => {
+              this.logger.debug(`${totalDocs} documents have been sent and acknowledged for backup`);
 
-            // Backup is finished. Send last event and complete
-            backupProgress$.next({
-              file: targetArchivePath,
-              savedDocs: savedDocs,
-              totalDocs: totalDocs
-            });
-            backupProgress$.complete();
+              // Backup is finished. Send last event and complete
+              backupProgress$.next({
+                file: targetArchivePath,
+                savedDocs: savedDocs,
+                totalDocs: totalDocs
+              });
+              backupProgress$.complete();
 
-            this.logger.debug(`Backup done in ${Math.round(performance.now() - backupStartTime)}ms`);
-          });
+              this.logger.debug(`Backup done in ${Math.round(performance.now() - backupStartTime)}ms`);
+            });
+        });
+      })
+      .catch(error => {
+        // IPC or disk failure (init, metadata or any chunk): end the progress stream with the error
+        this.logger.error("Backup failed", error);
+        backupProgress$.error(error);
       });
-    });
 
     return backupProgress$;
   }
