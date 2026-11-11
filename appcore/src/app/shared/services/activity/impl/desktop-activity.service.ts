@@ -120,11 +120,15 @@ export class DesktopActivityService extends ActivityService {
     }
 
     this.isRecalculating = true;
+    let processed = 0;
+    let lastActivity: Activity = null;
 
     return activities
       .reduce((previousRefreshDone: Promise<void>, activity: Activity, index: number) => {
         return previousRefreshDone.then(() => {
+          lastActivity = activity;
           return this.recalculateSingle(activity, userSettings).then(activityRefreshed => {
+            processed = index + 1;
             const recalculateNotification = ActivityRecalculateNotification.create(
               activityRefreshed,
               index + 1,
@@ -148,6 +152,7 @@ export class DesktopActivityService extends ActivityService {
         return Promise.resolve();
       })
       .catch(err => {
+        this.endFailedRecalculation(lastActivity, processed, activities.length);
         return Promise.reject(new ElevateException(err));
       });
   }
@@ -161,15 +166,19 @@ export class DesktopActivityService extends ActivityService {
     }
 
     this.isRecalculating = true;
+    let processed = 0;
+    let lastActivity: Activity = null;
 
     return activityIds
       .reduce((previousRefreshDone: Promise<void>, activityId: number | string, index: number) => {
         return previousRefreshDone.then(() => {
           return this.getById(activityId)
             .then(activity => {
+              lastActivity = activity || lastActivity;
               return this.recalculateSingle(activity, userSettings);
             })
             .then(activityRefreshed => {
+              processed = index + 1;
               const recalculateNotification = ActivityRecalculateNotification.create(
                 activityRefreshed,
                 index + 1,
@@ -192,8 +201,24 @@ export class DesktopActivityService extends ActivityService {
         return Promise.resolve();
       })
       .catch(err => {
+        this.endFailedRecalculation(lastActivity, processed, activityIds.length);
         return Promise.reject(new ElevateException(err));
       });
+  }
+
+  /**
+   * Release the recalculation lock after a failure and emit a final "ended" notification,
+   * so later recalculations are allowed and the UI locked by "started" (isSyncing$) is released.
+   * Does nothing if the recalculation already ended (e.g. a failure after all activities were processed).
+   */
+  private endFailedRecalculation(lastActivity: Activity, processed: number, toProcessCount: number): void {
+    if (!this.isRecalculating) {
+      return;
+    }
+    this.isRecalculating = false;
+    this.recalculate$.next(
+      ActivityRecalculateNotification.create(lastActivity || new Activity(), processed, toProcessCount, false, true)
+    );
   }
 
   public recalculateAll(userSettings: UserSettings.DesktopUserSettings): Promise<void> {

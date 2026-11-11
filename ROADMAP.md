@@ -49,7 +49,7 @@ One small pull request per line, each with the regression spec named in the cata
 
 | Status | Branch | Items | Change |
 |--------|--------|-------|--------|
-| open | `fix/recalc-lock` | D1 | Reset `isRecalculating` and emit `ended` when recalculation fails. |
+| in review | `fix/recalc-lock` | D1 | Reset `isRecalculating` and emit `ended` when recalculation fails. |
 | open | `fix/sync-complete-catch` | D4, C1, C6 | Release the syncing state when saving fails; null check for fast sync with an empty database; tag errors with the current connector. |
 | open | `fix/backup-errors` | D5 | Error the backup progress subject on IPC or disk failures. |
 | open | `fix/atomic-restore` | D2 | Stage the restore in a fresh in-memory Loki and swap only when complete. |
